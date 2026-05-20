@@ -45,9 +45,14 @@ lost.
 We propose a diagnostic framework that evaluates retrieval and
 classification independently, and use it to guide a four-stage
 development process.
-Starting from a dense retrieval baseline (Evidence F-score = 0.147,
-Accuracy = 52.6\%), we show that hybrid retrieval alone does not improve
-precision despite improving recall.
+Starting from a hybrid retrieval baseline (TF-IDF + BGE dense encoder,
+RRF fusion; Evidence F-score = 0.144, Accuracy = 54.6\%), we show that
+combining sparse and dense retrieval improves recall but not precision:
+the correct evidence is present in the top-100 candidate pool for 60.7\%
+of claims, yet F@5 remains flat.
+Adding a cross-encoder reranker trained on hard negatives raises Evidence
+F@5 to 0.238 (+65\% relative) with no change to the candidate pool,
+confirming that the bottleneck is ranking, not recall.
 \placeholder{%
   Complete abstract once Systems 3 and 4 are finalised.
   Include: what S3 does, its key result (F, A, H),
@@ -85,9 +90,9 @@ much retrieval quality is limiting the classifier.
 
 Our contributions are as follows:
 \begin{itemize}
-  \item We demonstrate that bi-encoder hybrid retrieval improves recall
-        but not precision, and identify the ranking step as the primary
-        bottleneck.
+  \item We demonstrate that hybrid bi-encoder retrieval improves recall
+        but not precision, and show that a cross-encoder reranker trained
+        on hard negatives resolves this bottleneck (+65\% relative F@5).
   \item \placeholder{Add contribution of System 3 here once finalised.}
   \item \placeholder{Add contribution of System 4 (novel method) here.}
 \end{itemize}
@@ -100,92 +105,130 @@ All systems share the same high-level pipeline: a \textbf{retrieval
 stage} that selects a small set of evidence passages for each claim,
 followed by a \textbf{classification stage} that predicts the claim
 label given those passages.
-We describe four systems in order of increasing sophistication; each is
-motivated by a specific weakness identified in the previous one.
+We describe two fully implemented systems here; Systems 3 and 4 are
+documented separately by other team members.
+Each system is motivated by a specific weakness identified in the
+previous one.
 
 % ----------------------------------------------------------------
-\subsection{System 1 — Dense Retrieval Baseline}
+\subsection{System 1 --- Hybrid Retrieval Baseline (V3)}
 \label{sec:system1}
 % ----------------------------------------------------------------
 
 \paragraph{Retrieval.}
-We encode all 1.2 million evidence passages using
-\texttt{all-MiniLM-L6-v2} \citep{reimers-gurevych-2019-sentence}, a
-22M-parameter sentence encoder producing 384-dimensional embeddings.
-Embeddings are L2-normalised and stored in a matrix; at query time, each
-claim is encoded and the top-5 passages are retrieved by cosine
-similarity.
-
-\paragraph{Classifier.}
-We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as a
-4-class sequence classifier.
-The input is the concatenation \texttt{[CLS] claim [SEP] evidence$_1$
-$\ldots$ evidence$_k$ [SEP]}, truncated to 512 tokens.
-We use a \textbf{two-stage training} procedure motivated by the
-distribution mismatch between training and inference:
-\begin{enumerate}
-  \item \textbf{Stage 1} (10 epochs, lr = 2e-5): train on ground-truth
-        evidence, giving the model a clean signal about the relationship
-        between claims and correct evidence.
-  \item \textbf{Stage 2} (5 epochs, lr = 5e-6): fine-tune on retrieved
-        evidence, adapting the model to the noisy, imperfect evidence it
-        will see at inference time.
-\end{enumerate}
-All experiments use fp32 precision; we found that DeBERTa-v3's
-disentangled attention mechanism produces NaN gradients under bf16, a
-known numerical stability issue with this architecture.
-
-\paragraph{Key finding.}
-Despite using a dedicated sentence encoder, dense retrieval achieves
-F@5 = 0.147, identical to a TF-IDF baseline.
-This suggests that a general-purpose sentence encoder lacks the
-domain-specific vocabulary needed to distinguish relevant climate science
-evidence from topically similar but logically unrelated passages.
-
-% ----------------------------------------------------------------
-\subsection{System 2 — Hybrid Retrieval}
-\label{sec:system2}
-% ----------------------------------------------------------------
-
-\paragraph{Motivation.}
-System 1 showed that dense retrieval alone does not outperform sparse
-retrieval.
-We hypothesise that the two retrievers are complementary: TF-IDF excels
-at exact keyword matches (e.g.\ specific temperature values, chemical
-formulae), while dense retrieval captures paraphrases and semantic
-equivalences.
-Combining them should improve recall without sacrificing precision.
-
-\paragraph{Retrieval.}
-We replace \texttt{all-MiniLM-L6-v2} with
+We build a hybrid retriever that combines sparse and dense signals.
+On the sparse side, we index all 1.2 million evidence passages with
+TF-IDF (sklearn, max\_features = 100{,}000, English stop words removed)
+\citep{manning-etal-2008-ir}.
+A TF-IDF-only retriever achieves F@5 = 0.147 on the development set;
+we include this number as a reference point but do not treat it as a
+standalone system, as it requires no learning and serves only to
+motivate the hybrid design.
+On the dense side, we encode all passages using
 \texttt{bge-base-en-v1.5} \citep{xiao-etal-2023-bge}, a 110M-parameter
-encoder producing 768-dimensional embeddings that is specifically
-optimised for retrieval tasks.
-We combine TF-IDF and BGE scores using \textbf{Reciprocal Rank Fusion}
+encoder producing 768-dimensional L2-normalised embeddings specifically
+optimised for retrieval.
+The two ranked lists are fused using \textbf{Reciprocal Rank Fusion}
 (RRF) \citep{cormack-etal-2009-reciprocal}:
 \begin{equation}
   \text{RRF}(d) = \sum_{r \in \{\text{TF-IDF},\, \text{BGE}\}}
   \frac{1}{k + \text{rank}_r(d)}, \quad k = 60
 \end{equation}
 where $\text{rank}_r(d)$ is the rank of document $d$ under retriever $r$.
-We sweep $k \in \{3, 5, 7, 10\}$ on the development set and select the
-value that maximises F@5.
+We sweep top-$k \in \{3, 5, 7, 10\}$ on the development set;
+F-scores are 0.147, 0.144, 0.145, and 0.131 respectively, so we select
+$k = 5$ as the operating point.
 
 \paragraph{Classifier.}
-Identical to System 1.
+We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as a
+4-class sequence classifier.
+The input is the concatenation
+\texttt{[CLS] claim [SEP] evidence$_1$ $\ldots$ evidence$_k$ [SEP]},
+truncated to 512 tokens.
+We use a \textbf{two-stage training} procedure to address the
+distribution mismatch between training and inference:
+\begin{enumerate}
+  \item \textbf{Stage 1} (10 epochs, lr = 2e-5): train on ground-truth
+        evidence, giving the model a clean signal about the relationship
+        between claims and correct evidence.
+  \item \textbf{Stage 2} (5 epochs, lr = 5e-6): fine-tune on retrieved
+        evidence, adapting the model to the imperfect evidence it will
+        encounter at inference time.
+\end{enumerate}
+All training uses fp32 precision.
+We found that DeBERTa-v3's disentangled attention mechanism produces
+NaN gradients under bf16 on both MPS and CUDA backends, a known
+numerical stability issue with this architecture.
 
 \paragraph{Key finding.}
-Hybrid retrieval achieves Recall@100 = 60.7\%, confirming that the
+The hybrid retriever achieves Recall@100 = 60.7\%, confirming that the
 correct evidence is present in the coarse candidate pool for the majority
 of claims.
-However, F@5 remains flat at 0.144 (Table~\ref{tab:retrieval}).
-Analysis reveals why: TF-IDF and BGE each uniquely cover approximately
-6\% of ground-truth evidence passages, and their union covers 25\% of
-ground truth.
-The bottleneck is therefore not recall but \textbf{precision}: both
-retrievers score passages by surface-level or semantic similarity to the
-claim, but neither can model the logical relationship between a claim and
-a passage (e.g.\ whether the passage entails or contradicts the claim).
+However, F@5 = 0.144 --- barely above the TF-IDF-only baseline of 0.147.
+Analysis of the two retrievers' outputs reveals why: TF-IDF and BGE each
+uniquely cover approximately 6\% of ground-truth evidence passages, and
+their union covers only 25\% of ground truth at top-5.
+The retrievers are complementary in recall but both fail at the same
+precision problem: they score passages by surface-level or semantic
+similarity to the claim, without modelling the logical relationship
+between them (e.g.\ whether a passage entails or contradicts the claim).
+This motivates a dedicated reranking step in System 2.
+
+% ----------------------------------------------------------------
+\subsection{System 2 --- Hybrid Retrieval with Cross-Encoder Reranker (V4)}
+\label{sec:system2}
+% ----------------------------------------------------------------
+
+\paragraph{Motivation.}
+System 1 established that Recall@100 = 60.7\%: the correct evidence is
+already in the top-100 candidate pool for most claims.
+The bottleneck is therefore not recall but ranking --- the hybrid
+retriever cannot distinguish logically relevant evidence from topically
+similar but irrelevant passages.
+A bi-encoder scores query and document independently, making it
+structurally unable to model their interaction.
+A cross-encoder reads the claim and candidate evidence jointly as a
+single sequence, allowing it to capture logical relationships such as
+entailment and contradiction \citep{nogueira-cho-2019-passage}.
+
+\paragraph{Retrieval: coarse stage.}
+We retain the hybrid TF-IDF + BGE retriever from System 1, expanding
+the candidate pool to top-100 (Recall@100 = 60.7\%).
+
+\paragraph{Retrieval: reranking stage.}
+We fine-tune a second \texttt{DeBERTa-v3-base} instance as a binary
+cross-encoder reranker.
+Training data is constructed from the training set as follows:
+\begin{itemize}
+  \item \textbf{Positive pairs}: (claim, ground-truth evidence passage),
+        label = 1.
+  \item \textbf{Negative pairs}: (claim, non-GT passage from the top-100
+        coarse pool), label = 0, sampled at a 3:1 negative ratio.
+\end{itemize}
+Using non-GT passages from the coarse pool as negatives produces
+\emph{hard negatives} --- passages that are topically related to the
+claim (they passed the coarse filter) but are not ground-truth evidence.
+This forces the reranker to learn logical relevance rather than topical
+similarity.
+The reranker is trained for 3 epochs (batch size = 32, lr = 2e-5,
+max\_length = 256, fp32).
+At inference time, all 100 candidates are scored and the top-5 are
+selected.
+
+\paragraph{Classifier.}
+Identical to System 1: DeBERTa-v3-base fp32, same two-stage training
+procedure and hyperparameters.
+This keeps the classification component controlled, isolating the effect
+of the reranker on end-to-end performance.
+
+\paragraph{Key finding.}
+The cross-encoder reranker raises Evidence F@5 from 0.144 to 0.238,
+a 65\% relative improvement, while Recall@100 remains unchanged at
+60.7\%.
+This confirms that the improvement is entirely due to better ranking
+within the existing candidate pool, not to retrieving new evidence.
+Overall classification accuracy improves from 54.6\% to 56.5\%,
+and the Harmonic Mean rises from 0.228 to 0.334.
 
 % ----------------------------------------------------------------
 % ----------------------------------------------------------------
