@@ -136,8 +136,15 @@ The two ranked lists are fused using \textbf{Reciprocal Rank Fusion}
 \end{equation}
 where $\text{rank}_r(d)$ is the rank of document $d$ under retriever $r$.
 We sweep top-$k \in \{3, 5, 7, 10\}$ on the development set;
-F-scores are 0.147, 0.144, 0.145, and 0.131 respectively, so we select
-$k = 5$ as the operating point.
+F-scores are 0.147, 0.144, 0.145, and 0.131 respectively.
+Notably, the hybrid at $k = 5$ (F@5 = 0.144) is marginally below
+TF-IDF alone (0.147), because adding the dense retriever introduces
+lower-precision candidates that dilute the top-5 set.
+The hybrid's advantage lies not in F@5 but in Recall@100 = 60.7\%
+(measured separately), which is the metric that matters for the
+reranking stage in System 2.
+We select $k = 5$ as a reasonable precision--recall tradeoff for
+downstream classification.
 
 \paragraph{Classifier.}
 We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as a
@@ -164,14 +171,19 @@ numerical stability issue with this architecture.
 The hybrid retriever achieves Recall@100 = 60.7\%, confirming that the
 correct evidence is present in the coarse candidate pool for the majority
 of claims.
-However, F@5 = 0.144 --- barely above the TF-IDF-only baseline of 0.147.
-Analysis of the two retrievers' outputs reveals why: TF-IDF and BGE each
-uniquely cover approximately 6\% of ground-truth evidence passages, and
-their union covers only 25\% of ground truth at top-5.
-The retrievers are complementary in recall but both fail at the same
-precision problem: they score passages by surface-level or semantic
-similarity to the claim, without modelling the logical relationship
-between them (e.g.\ whether a passage entails or contradicts the claim).
+At top-5, however, F@5 = 0.144 --- marginally below the TF-IDF-only
+baseline of 0.147, because the dense retriever introduces additional
+candidates that reduce precision without a corresponding recall gain at
+this cutoff.
+The hybrid's value is therefore in its recall at larger pool sizes, not
+in its top-5 precision.
+Analysis of the two retrievers' outputs reveals why precision stalls:
+TF-IDF and BGE each uniquely cover approximately 6\% of ground-truth
+evidence passages, and their union covers only 25\% of ground truth at
+top-5.
+Both retrievers score passages by surface-level or semantic similarity
+to the claim, without modelling the logical relationship between them
+(e.g.\ whether a passage entails or contradicts the claim).
 This motivates a dedicated reranking step in System 2.
 
 % ----------------------------------------------------------------
@@ -263,6 +275,17 @@ and the Harmonic Mean rises from 0.228 to 0.334.
   Cover: dataset stats (Table of label distribution already drafted above),
   evaluation metrics (F, A, H), the diagnostic metric A(GT) vs A(Retrieved),
   hardware, random seeds, training times.
+
+  Include the Harmonic Mean formula explicitly:
+  \begin{equation}
+    H = \frac{2 \cdot F \cdot A}{F + A}
+  \end{equation}
+  where $F$ is the Evidence F-score and $A$ is Classification Accuracy,
+  both aggregated over the full development set.
+  Note for readers: the large H jump from 0.228 to 0.334 between Systems
+  1 and 2 is driven primarily by the F@5 gain (0.144 $\to$ 0.238), not
+  the modest accuracy gain (54.6\% $\to$ 56.5\%), because H is sensitive
+  to improvements in the weaker of the two components.
 
   \subsection*{Retrieval Results}
   Table comparing Recall@100 and F@5 across all four systems.
