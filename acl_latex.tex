@@ -1,377 +1,577 @@
 \documentclass[11pt]{article}
 
-% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
-% Change to "preprint" to generate a non-anonymous version with page numbers.
+% Change "review" to "final" to generate the final (camera-ready) version.
 \usepackage[review]{acl}
 
-% Standard package includes
 \usepackage{times}
 \usepackage{latexsym}
-
-% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
 \usepackage[T1]{fontenc}
-% For Vietnamese characters
-% \usepackage[T5]{fontenc}
-% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
-
-% This assumes your files are encoded as UTF8
 \usepackage[utf8]{inputenc}
-
-% This is not strictly necessary, and may be commented out,
-% but it will improve the layout of the manuscript,
-% and will typically save some space.
 \usepackage{microtype}
-
-% This is also not strictly necessary, and may be commented out.
-% However, it will improve the aesthetics of text in
-% the typewriter font.
 \usepackage{inconsolata}
-
-%Including images in your LaTeX document requires adding
-%additional package(s)
 \usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{xcolor}
 
-% If the title and author information does not fit in the area allocated, uncomment the following
-%
-%\setlength\titlebox{<dim>}
-%
-% and set <dim> to something 5cm or larger.
+% Placeholder command — bright orange so it is impossible to miss
+\newcommand{\placeholder}[1]{\textcolor{orange}{\textbf{[PLACEHOLDER: #1]}}}
 
-\title{Instructions for *ACL github test}
+\title{Decomposing Automated Fact-Checking:\\
+Retrieval, Reranking, and NLI-Guided Classification\\
+for Climate Science Claims}
 
-% Author information can be set in various styles:
-% For several authors from the same institution:
-% \author{Author 1 \and ... \and Author n \\
-%         Address line \\ ... \\ Address line}
-% if the names do not fit well on one line use
-%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
-% For authors from different institutions:
-% \author{Author 1 \\ Address line \\  ... \\ Address line
-%         \And  ... \And
-%         Author n \\ Address line \\ ... \\ Address line}
-% To start a separate ``row'' of authors use \AND, as in
-% \author{Author 1 \\ Address line \\  ... \\ Address line
-%         \AND
-%         Author 2 \\ Address line \\ ... \\ Address line \And
-%         Author 3 \\ Address line \\ ... \\ Address line}
-
-\author{First Author \\
-  Affiliation / Address line 1 \\
-  Affiliation / Address line 2 \\
-  Affiliation / Address line 3 \\
-  \texttt{email@domain} \\\And
-  Second Author \\
-  Affiliation / Address line 1 \\
-  Affiliation / Address line 2 \\
-  Affiliation / Address line 3 \\
-  \texttt{email@domain} \\}
-
-%\author{
-%  \textbf{First Author\textsuperscript{1}},
-%  \textbf{Second Author\textsuperscript{1,2}},
-%  \textbf{Third T. Author\textsuperscript{1}},
-%  \textbf{Fourth Author\textsuperscript{1}},
-%\\
-%  \textbf{Fifth Author\textsuperscript{1,2}},
-%  \textbf{Sixth Author\textsuperscript{1}},
-%  \textbf{Seventh Author\textsuperscript{1}},
-%  \textbf{Eighth Author \textsuperscript{1,2,3,4}},
-%\\
-%  \textbf{Ninth Author\textsuperscript{1}},
-%  \textbf{Tenth Author\textsuperscript{1}},
-%  \textbf{Eleventh E. Author\textsuperscript{1,2,3,4,5}},
-%  \textbf{Twelfth Author\textsuperscript{1}},
-%\\
-%  \textbf{Thirteenth Author\textsuperscript{3}},
-%  \textbf{Fourteenth F. Author\textsuperscript{2,4}},
-%  \textbf{Fifteenth Author\textsuperscript{1}},
-%  \textbf{Sixteenth Author\textsuperscript{1}},
-%\\
-%  \textbf{Seventeenth S. Author\textsuperscript{4,5}},
-%  \textbf{Eighteenth Author\textsuperscript{3,4}},
-%  \textbf{Nineteenth N. Author\textsuperscript{2,5}},
-%  \textbf{Twentieth Author\textsuperscript{1}}
-%\\
-%\\
-%  \textsuperscript{1}Affiliation 1,
-%  \textsuperscript{2}Affiliation 2,
-%  \textsuperscript{3}Affiliation 3,
-%  \textsuperscript{4}Affiliation 4,
-%  \textsuperscript{5}Affiliation 5
-%\\
-%  \small{
-%    \textbf{Correspondence:} \href{mailto:email@domain}{email@domain}
-%  }
-%}
+\author{
+  \textbf{[Author 1]} \and \textbf{[Author 2]} \and \textbf{[Author 3]} \\
+  School of Computing and Information Systems \\
+  The University of Melbourne \\
+  \texttt{[Group Number]}
+}
 
 \begin{document}
 \maketitle
+
+% ================================================================
 \begin{abstract}
-This document is a supplement to the general instructions for *ACL authors. It contains instructions for using the \LaTeX{} style files for ACL conferences.
-The document itself conforms to its own specifications, and is therefore an example of what your manuscript should look like.
-These instructions should be used both for papers submitted for review and for final versions of accepted papers.
+% ================================================================
+
+Automated fact-checking over large evidence corpora requires solving two
+interdependent sub-problems: retrieving relevant evidence passages and
+classifying a claim given that evidence.
+We present a system for verifying climate science claims against a corpus
+of 1.2 million evidence passages, and argue that treating these two
+components as a unified pipeline obscures where performance is actually
+lost.
+We propose a diagnostic framework that evaluates retrieval and
+classification independently, and use it to guide a four-stage
+development process.
+Starting from a dense retrieval baseline (Evidence F-score = 0.147,
+Accuracy = 52.6\%), we show that hybrid retrieval alone does not improve
+precision despite improving recall, motivating a cross-encoder reranker
+that raises the Evidence F-score to 0.238 (+65\% relative).
+Replacing the classifier initialisation with a model pre-trained on
+Natural Language Inference (NLI) further improves classification accuracy
+to 59.1\%, particularly on the \textsc{Refutes} (+7.4\%) and
+\textsc{Not\_Enough\_Info} (+12.2\%) classes.
+Our best system achieves a Harmonic Mean of 0.334 on the development set.
+\placeholder{Update abstract with final test-set numbers and System 4 result before submission.}
+
 \end{abstract}
 
+% ================================================================
 \section{Introduction}
+% ================================================================
 
-These instructions are for authors submitting papers to *ACL conferences using \LaTeX. They are not self-contained. All authors must follow the general instructions for *ACL proceedings,\footnote{\url{http://acl-org.github.io/ACLPUB/formatting.html}} and this document contains additional instructions for the \LaTeX{} style files.
+The proliferation of unverified claims about climate science has made
+automated fact-checking an increasingly important NLP task
+\citep{diggelmann-etal-2020-climate}.
+Given a natural-language claim, a fact-checking system must (1) retrieve
+the most relevant evidence passages from a large corpus, and (2) classify
+the claim as \textsc{Supports}, \textsc{Refutes},
+\textsc{Not\_Enough\_Info}, or \textsc{Disputed} based on that evidence.
 
-The templates include the \LaTeX{} source of this document (\texttt{acl\_latex.tex}),
-the \LaTeX{} style file used to format it (\texttt{acl.sty}),
-an ACL bibliography style (\texttt{acl\_natbib.bst}),
-an example bibliography (\texttt{custom.bib}),
-and the bibliography for the ACL Anthology (\texttt{anthology.bib}).
+A key challenge that is often underappreciated is that these two
+components are tightly coupled: a classifier that receives the wrong
+evidence will fail regardless of its capacity, while a retriever that
+returns topically similar but logically irrelevant passages creates a
+distribution mismatch that degrades classification at inference time.
+This coupling makes it difficult to diagnose where a system is failing
+from end-to-end metrics alone.
 
-\section{Engines}
+We address this by adopting a \textbf{decomposed evaluation strategy}:
+we measure retrieval quality independently (Recall@100, F@5) and
+classification quality both with ground-truth evidence (an upper bound)
+and with retrieved evidence (the realistic setting).
+The gap between these two classification numbers directly quantifies how
+much retrieval quality is limiting the classifier.
 
-To produce a PDF file, pdf\LaTeX{} is strongly recommended (over original \LaTeX{} plus dvips+ps2pdf or dvipdf).
-The style file \texttt{acl.sty} can also be used with
-lua\LaTeX{} and
-Xe\LaTeX{}, which are especially suitable for text in non-Latin scripts.
-The file \texttt{acl\_lualatex.tex} in this repository provides
-an example of how to use \texttt{acl.sty} with either
-lua\LaTeX{} or
-Xe\LaTeX{}.
+Our contributions are as follows:
+\begin{itemize}
+  \item We demonstrate that bi-encoder hybrid retrieval improves recall
+        but not precision, and identify the ranking step as the primary
+        bottleneck.
+  \item We show that a cross-encoder reranker trained on hard negatives
+        from the coarse retrieval pool yields the largest single
+        improvement in our pipeline (+65\% relative Evidence F-score).
+  \item We show that initialising the classifier from an NLI-pretrained
+        model substantially improves performance on minority classes,
+        particularly \textsc{Refutes} and \textsc{Not\_Enough\_Info}.
+  \item \placeholder{Add contribution of System 4 (novel method) here.}
+\end{itemize}
 
-\section{Preamble}
+% ================================================================
+\section{Approach}
+% ================================================================
 
-The first line of the file must be
-\begin{quote}
-\begin{verbatim}
-\documentclass[11pt]{article}
-\end{verbatim}
-\end{quote}
+All systems share the same high-level pipeline: a \textbf{retrieval
+stage} that selects a small set of evidence passages for each claim,
+followed by a \textbf{classification stage} that predicts the claim
+label given those passages.
+We describe four systems in order of increasing sophistication; each is
+motivated by a specific weakness identified in the previous one.
 
-To load the style file in the review version:
-\begin{quote}
-\begin{verbatim}
-\usepackage[review]{acl}
-\end{verbatim}
-\end{quote}
-For the final version, omit the \verb|review| option:
-\begin{quote}
-\begin{verbatim}
-\usepackage{acl}
-\end{verbatim}
-\end{quote}
+% ----------------------------------------------------------------
+\subsection{System 1 — Dense Retrieval Baseline}
+\label{sec:system1}
+% ----------------------------------------------------------------
 
-To use Times Roman, put the following in the preamble:
-\begin{quote}
-\begin{verbatim}
-\usepackage{times}
-\end{verbatim}
-\end{quote}
-(Alternatives like txfonts or newtx are also acceptable.)
+\paragraph{Retrieval.}
+We encode all 1.2 million evidence passages using
+\texttt{all-MiniLM-L6-v2} \citep{reimers-gurevych-2019-sentence}, a
+22M-parameter sentence encoder producing 384-dimensional embeddings.
+Embeddings are L2-normalised and stored in a matrix; at query time, each
+claim is encoded and the top-5 passages are retrieved by cosine
+similarity.
+Encoding the full corpus takes approximately 3.8 minutes on a single GPU.
 
-Please see the \LaTeX{} source of this document for comments on other packages that may be useful.
+\paragraph{Classifier.}
+We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as a
+4-class sequence classifier.
+The input is the concatenation \texttt{[CLS] claim [SEP] evidence$_1$
+$\ldots$ evidence$_k$ [SEP]}, truncated to 512 tokens.
+We use a \textbf{two-stage training} procedure motivated by the
+distribution mismatch between training and inference:
+\begin{enumerate}
+  \item \textbf{Stage 1} (10 epochs, lr = 2e-5): train on ground-truth
+        evidence, giving the model a clean signal about the relationship
+        between claims and correct evidence.
+  \item \textbf{Stage 2} (5 epochs, lr = 5e-6): fine-tune on retrieved
+        evidence, adapting the model to the noisy, imperfect evidence it
+        will see at inference time.
+\end{enumerate}
+All experiments use fp32 precision; we found that DeBERTa-v3's
+disentangled attention mechanism produces NaN gradients under bf16, a
+known numerical stability issue with this architecture.
 
-Set the title and author using \verb|\title| and \verb|\author|. Within the author list, format multiple authors using \verb|\and| and \verb|\And| and \verb|\AND|; please see the \LaTeX{} source for examples.
+\paragraph{Key finding.}
+Despite using a dedicated sentence encoder, dense retrieval achieves
+F@5 = 0.147, identical to a TF-IDF baseline.
+This suggests that a general-purpose sentence encoder lacks the
+domain-specific vocabulary needed to distinguish relevant climate science
+evidence from topically similar but logically unrelated passages.
 
-By default, the box containing the title and author names is set to the minimum of 5 cm. If you need more space, include the following in the preamble:
-\begin{quote}
-\begin{verbatim}
-\setlength\titlebox{<dim>}
-\end{verbatim}
-\end{quote}
-where \verb|<dim>| is replaced with a length. Do not set this length smaller than 5 cm.
+% ----------------------------------------------------------------
+\subsection{System 2 — Hybrid Retrieval}
+\label{sec:system2}
+% ----------------------------------------------------------------
 
-\section{Document Body}
+\paragraph{Motivation.}
+System 1 showed that dense retrieval alone does not outperform sparse
+retrieval.
+We hypothesise that the two retrievers are complementary: TF-IDF excels
+at exact keyword matches (e.g.\ specific temperature values, chemical
+formulae), while dense retrieval captures paraphrases and semantic
+equivalences.
+Combining them should improve recall without sacrificing precision.
 
-\subsection{Footnotes}
+\paragraph{Retrieval.}
+We replace \texttt{all-MiniLM-L6-v2} with
+\texttt{bge-base-en-v1.5} \citep{xiao-etal-2023-bge}, a 110M-parameter
+encoder producing 768-dimensional embeddings that is specifically
+optimised for retrieval tasks.
+We combine TF-IDF and BGE scores using \textbf{Reciprocal Rank Fusion}
+(RRF) \citep{cormack-etal-2009-reciprocal}:
+\begin{equation}
+  \text{RRF}(d) = \sum_{r \in \{\text{TF-IDF},\, \text{BGE}\}}
+  \frac{1}{k + \text{rank}_r(d)}, \quad k = 60
+\end{equation}
+where $\text{rank}_r(d)$ is the rank of document $d$ under retriever $r$.
+We sweep $k \in \{3, 5, 7, 10\}$ on the development set and select the
+value that maximises F@5.
 
-Footnotes are inserted with the \verb|\footnote| command.\footnote{This is a footnote.}
+\paragraph{Classifier.}
+Identical to System 1.
 
-\subsection{Tables and figures}
+\paragraph{Key finding.}
+Hybrid retrieval achieves Recall@100 = 60.7\%, confirming that the
+correct evidence is present in the coarse candidate pool for the majority
+of claims.
+However, F@5 remains flat at 0.144 (Table~\ref{tab:retrieval}).
+Analysis reveals why: TF-IDF and BGE each uniquely cover approximately
+6\% of ground-truth evidence passages, and their union covers 25\% of
+ground truth.
+The bottleneck is therefore not recall but \textbf{precision}: both
+retrievers score passages by surface-level or semantic similarity to the
+claim, but neither can model the logical relationship between a claim and
+a passage (e.g.\ whether the passage entails or contradicts the claim).
+This motivates a cross-encoder reranker in System 3.
 
-See Table~\ref{tab:accents} for an example of a table and its caption.
-\textbf{Do not override the default caption sizes.}
+% ----------------------------------------------------------------
+\subsection{System 3 — Cross-Encoder Reranker with NLI Classifier}
+\label{sec:system3}
+% ----------------------------------------------------------------
 
-\begin{table}
+\paragraph{Motivation.}
+The analysis in Section~\ref{sec:system2} shows that the coarse pool
+already contains the right evidence; the problem is ranking it to the
+top-5.
+A bi-encoder scores query and document independently, making it
+structurally unable to model their interaction.
+A cross-encoder reads the claim and evidence jointly, allowing it to
+capture logical relationships such as entailment and contradiction
+\citep{nogueira-cho-2019-passage}.
+
+\paragraph{Retrieval: coarse stage.}
+We retain the hybrid TF-IDF + BGE retriever from System 2, but expand
+the candidate pool to top-100 (Recall@100 = 60.7\%).
+
+\paragraph{Retrieval: reranking stage.}
+We fine-tune a second \texttt{DeBERTa-v3-base} model as a binary
+cross-encoder reranker.
+Training data is constructed from the training set:
+\begin{itemize}
+  \item \textbf{Positive pairs}: (claim, ground-truth evidence passage),
+        label = 1.
+  \item \textbf{Negative pairs}: (claim, non-GT passage from the
+        top-100 coarse pool), label = 0, sampled at a 3:1 ratio.
+\end{itemize}
+These \emph{hard negatives} are topically related to the claim (they
+passed the coarse filter) but are not ground-truth evidence, forcing the
+reranker to learn logical relevance rather than topical similarity.
+The reranker is trained for 3 epochs (batch size 32, lr = 2e-5,
+max\_length = 256).
+At inference time, all 100 candidates are scored and the top-5 are
+selected.
+
+\paragraph{Classifier.}
+We replace the DeBERTa classifier initialisation with
+\texttt{cross-encoder/nli-deberta-v3-base}, a model pre-trained on
+Natural Language Inference datasets \citep{nie-etal-2020-adversarial}.
+The NLI pre-training task (entailment / contradiction / neutral) maps
+directly onto the fact-checking labels: \textsc{Supports} $\approx$
+entailment, \textsc{Refutes} $\approx$ contradiction,
+\textsc{Not\_Enough\_Info} $\approx$ neutral.
+We replace the 3-class NLI head with a 4-class head and fine-tune using
+the same two-stage procedure as Systems 1 and 2.
+
+\paragraph{Key finding.}
+The cross-encoder reranker raises Evidence F@5 from 0.144 to 0.238, a
+65\% relative improvement.
+NLI initialisation raises overall classification accuracy from 56.5\% to
+59.1\%, with the largest gains on \textsc{Refutes} (+7.4\%) and
+\textsc{Not\_Enough\_Info} (+12.2\%) — precisely the classes that require
+understanding logical opposition and absence of support.
+
+% ----------------------------------------------------------------
+\subsection{System 4 — \placeholder{Novel Method Name}}
+\label{sec:system4}
+% ----------------------------------------------------------------
+
+\placeholder{%
+  This section is to be written by the other team members.
+  Suggested structure:
+  (1) Motivation: what weakness of System 3 does this address?
+  (2) Method description with equations/architecture details.
+  (3) Key design decisions and why you made them.
+  (4) Brief note on what papers inspired this (with citations).
+  Target length: similar to Systems 2--3 above, roughly 0.5 columns.
+}
+
+% ================================================================
+\section{Experiments}
+% ================================================================
+
+% ----------------------------------------------------------------
+\subsection{Experimental Setup}
+% ----------------------------------------------------------------
+
+\paragraph{Dataset.}
+We use the COMP90042 climate fact-checking dataset.
+The training set contains 1,228 labelled claims; the development set
+contains 154 claims; the test set contains 153 unlabelled claims.
+The evidence corpus contains 1.2 million passages.
+Table~\ref{tab:label-dist} shows the label distribution in the training
+set, which is heavily skewed toward \textsc{Supports} (42.3\%) and away
+from \textsc{Disputed} (10.1\%).
+The median number of ground-truth evidence passages per claim is 3
+(range: 1--5).
+
+\begin{table}[t]
   \centering
-  \begin{tabular}{lc}
-    \hline
-    \textbf{Command} & \textbf{Output} \\
-    \hline
-    \verb|{\"a}|     & {\"a}           \\
-    \verb|{\^e}|     & {\^e}           \\
-    \verb|{\`i}|     & {\`i}           \\
-    \verb|{\.I}|     & {\.I}           \\
-    \verb|{\o}|      & {\o}            \\
-    \verb|{\'u}|     & {\'u}           \\
-    \verb|{\aa}|     & {\aa}           \\\hline
+  \small
+  \begin{tabular}{lrr}
+    \toprule
+    \textbf{Label} & \textbf{Count} & \textbf{\%} \\
+    \midrule
+    \textsc{Supports}        & 520 & 42.3 \\
+    \textsc{Refutes}         & 220 & 17.9 \\
+    \textsc{Not\_Enough\_Info} & 384 & 31.3 \\
+    \textsc{Disputed}        & 104 & 8.5  \\
+    \midrule
+    Total                    & 1228 & 100.0 \\
+    \bottomrule
   \end{tabular}
-  \begin{tabular}{lc}
-    \hline
-    \textbf{Command} & \textbf{Output} \\
-    \hline
-    \verb|{\c c}|    & {\c c}          \\
-    \verb|{\u g}|    & {\u g}          \\
-    \verb|{\l}|      & {\l}            \\
-    \verb|{\~n}|     & {\~n}           \\
-    \verb|{\H o}|    & {\H o}          \\
-    \verb|{\v r}|    & {\v r}          \\
-    \verb|{\ss}|     & {\ss}           \\
-    \hline
-  \end{tabular}
-  \caption{Example commands for accented characters, to be used in, \emph{e.g.}, Bib\TeX{} entries.}
-  \label{tab:accents}
+  \caption{Label distribution in the training set.
+           The imbalance between \textsc{Supports} and \textsc{Disputed}
+           (5:1 ratio) biases classifiers toward the majority class.}
+  \label{tab:label-dist}
 \end{table}
 
-As much as possible, fonts in figures should conform
-to the document fonts. See Figure~\ref{fig:experiments} for an example of a figure and its caption.
+\paragraph{Evaluation metrics.}
+We report three metrics following the official evaluation script:
+\begin{itemize}
+  \item \textbf{Evidence F-score (F)}: macro-averaged F$_1$ over
+        retrieved vs.\ ground-truth evidence sets per claim.
+  \item \textbf{Classification Accuracy (A)}: standard accuracy over
+        the four labels, ignoring retrieved evidence.
+  \item \textbf{Harmonic Mean (H)}: $H = 2FA / (F + A)$, the primary
+        leaderboard metric.
+\end{itemize}
 
-Using the \verb|graphicx| package graphics files can be included within figure
-environment at an appropriate point within the text.
-The \verb|graphicx| package supports various optional arguments to control the
-appearance of the figure.
-You must include it explicitly in the \LaTeX{} preamble (after the
-\verb|\documentclass| declaration and before \verb|\begin{document}|) using
-\verb|\usepackage{graphicx}|.
+\paragraph{Diagnostic metric.}
+To isolate retrieval from classification, we additionally report
+\textbf{Accuracy (GT)}: classification accuracy when the classifier
+receives ground-truth evidence instead of retrieved evidence.
+The gap $\Delta = \text{Accuracy (GT)} - \text{Accuracy (Retrieved)}$
+quantifies how much retrieval quality is limiting the classifier.
 
-\begin{figure}[t]
-  \includegraphics[width=\columnwidth]{example-image-golden}
-  \caption{A figure with a caption that runs for more than one line.
-    Example image is usually available through the \texttt{mwe} package
-    without even mentioning it in the preamble.}
-  \label{fig:experiments}
-\end{figure}
+\paragraph{Implementation details.}
+All models are implemented in PyTorch using the HuggingFace Transformers
+library.
+Random seeds are fixed at 42 for all experiments (Python, NumPy, PyTorch).
+All training is performed on a single NVIDIA GPU with fp32 precision.
+\placeholder{Add specific GPU model, training times, and any other
+hardware details here.}
 
-\begin{figure*}[t]
-  \includegraphics[width=0.48\linewidth]{example-image-a} \hfill
-  \includegraphics[width=0.48\linewidth]{example-image-b}
-  \caption {A minimal working example to demonstrate how to place
-    two images side-by-side.}
-\end{figure*}
+% ----------------------------------------------------------------
+\subsection{Retrieval Results}
+% ----------------------------------------------------------------
 
-\subsection{Hyperlinks}
+Table~\ref{tab:retrieval} summarises retrieval performance across systems.
 
-Users of older versions of \LaTeX{} may encounter the following error during compilation:
-\begin{quote}
-\verb|\pdfendlink| ended up in different nesting level than \verb|\pdfstartlink|.
-\end{quote}
-This happens when pdf\LaTeX{} is used and a citation splits across a page boundary. The best way to fix this is to upgrade \LaTeX{} to 2018-12-01 or later.
-
-\subsection{Citations}
-
-\begin{table*}
+\begin{table}[t]
   \centering
-  \begin{tabular}{lll}
-    \hline
-    \textbf{Output}           & \textbf{natbib command} & \textbf{ACL only command} \\
-    \hline
-    \citep{Gusfield:97}       & \verb|\citep|           &                           \\
-    \citealp{Gusfield:97}     & \verb|\citealp|         &                           \\
-    \citet{Gusfield:97}       & \verb|\citet|           &                           \\
-    \citeyearpar{Gusfield:97} & \verb|\citeyearpar|     &                           \\
-    \citeposs{Gusfield:97}    &                         & \verb|\citeposs|          \\
-    \hline
+  \small
+  \begin{tabular}{lcc}
+    \toprule
+    \textbf{Retrieval Method} & \textbf{Recall@100} & \textbf{F@5} \\
+    \midrule
+    TF-IDF only              & ---   & 0.147 \\
+    Dense (MiniLM) only      & ---   & 0.147 \\
+    Hybrid TF-IDF + BGE (S2) & 60.7\% & 0.144 \\
+    + Cross-Encoder Reranker (S3) & 60.7\% & \textbf{0.238} \\
+    \placeholder{System 4}   & \placeholder{} & \placeholder{} \\
+    \bottomrule
   \end{tabular}
-  \caption{\label{citation-guide}
-    Citation commands supported by the style file.
-    The style is based on the natbib package and supports all natbib citation commands.
-    It also supports commands defined in previous ACL style files for compatibility.
-  }
+  \caption{Retrieval performance on the development set.
+           Recall@100 measures whether the correct evidence is present
+           in the coarse candidate pool; F@5 measures the quality of
+           the final top-5 selection.
+           The flat Recall@100 between S2 and S3 confirms that the
+           reranker improves precision without changing the candidate pool.}
+  \label{tab:retrieval}
+\end{table}
+
+% ----------------------------------------------------------------
+\subsection{End-to-End Results}
+% ----------------------------------------------------------------
+
+Table~\ref{tab:main} shows the main results across all four systems.
+
+\begin{table*}[t]
+  \centering
+  \small
+  \begin{tabular}{lcccccccc}
+    \toprule
+    & & & \multicolumn{4}{c}{\textbf{Per-class Accuracy (Retrieved)}} & & \\
+    \cmidrule(lr){4-7}
+    \textbf{System} & \textbf{F} & \textbf{A (GT)} &
+    \textsc{Sup} & \textsc{Ref} & \textsc{NEI} & \textsc{Dis} &
+    \textbf{A (Ret)} & \textbf{H} \\
+    \midrule
+    S1: Dense Baseline
+      & 0.147 & \placeholder{} & 76.5 & 44.4 & 41.5 & 0.0 & 52.6 & --- \\
+    S2: Hybrid Retrieval
+      & 0.144 & \placeholder{} & \placeholder{} & \placeholder{} & \placeholder{} & 0.0 & 54.6 & 0.228 \\
+    S3: Reranker + NLI
+      & \textbf{0.238} & \placeholder{} & 86.8 & 59.3 & 39.0 & 0.0 & \textbf{59.1} & \textbf{0.334} \\
+    S4: \placeholder{Novel}
+      & \placeholder{} & \placeholder{} & \placeholder{} & \placeholder{} & \placeholder{} & \placeholder{} & \placeholder{} & \placeholder{} \\
+    \midrule
+    \multicolumn{9}{l}{\textit{Test set (leaderboard)}} \\
+    S3 (test)
+      & \placeholder{} & --- & --- & --- & --- & --- & \placeholder{} & \placeholder{} \\
+    \bottomrule
+  \end{tabular}
+  \caption{Main results on the development set (154 claims).
+           \textbf{F} = Evidence F-score; \textbf{A (GT)} = classification
+           accuracy with ground-truth evidence (upper bound);
+           \textbf{A (Ret)} = classification accuracy with retrieved
+           evidence; \textbf{H} = Harmonic Mean.
+           \textsc{Sup}/\textsc{Ref}/\textsc{NEI}/\textsc{Dis} denote
+           per-class accuracy (\%) for \textsc{Supports}, \textsc{Refutes},
+           \textsc{Not\_Enough\_Info}, and \textsc{Disputed} respectively.
+           \placeholder{Fill in A (GT) column by running each system's
+           classifier on ground-truth evidence --- this is the key
+           diagnostic number.}}
+  \label{tab:main}
 \end{table*}
 
-Table~\ref{citation-guide} shows the syntax supported by the style files.
-We encourage you to use the natbib styles.
-You can use the command \verb|\citet| (cite in text) to get ``author (year)'' citations, like this citation to a paper by \citet{Gusfield:97}.
-You can use the command \verb|\citep| (cite in parentheses) to get ``(author, year)'' citations \citep{Gusfield:97}.
-You can use the command \verb|\citealp| (alternative cite without parentheses) to get ``author, year'' citations, which is useful for using citations within parentheses (e.g. \citealp{Gusfield:97}).
+% ================================================================
+\section{Analysis}
+% ================================================================
 
-A possessive citation can be made with the command \verb|\citeposs|.
-This is not a standard natbib command, so it is generally not compatible
-with other style files.
+% ----------------------------------------------------------------
+\subsection{Retrieval is the Primary Bottleneck}
+% ----------------------------------------------------------------
 
-\subsection{References}
+The Recall@100 of 60.7\% in System 2 reveals that the coarse retrieval
+pool already contains the correct evidence for roughly 60\% of claims.
+Yet F@5 = 0.144 means the final top-5 selection is poor.
+This gap --- high recall at 100, low F-score at 5 --- is the defining
+diagnostic of our early systems: the problem is not finding the evidence,
+it is ranking it above the noise.
 
-\nocite{Ando2005,andrew2007scalable,rasooli-tetrault-2015}
+The A (GT) column in Table~\ref{tab:main} makes this concrete.
+\placeholder{%
+  Once A (GT) numbers are filled in, add a sentence here of the form:
+  ``With ground-truth evidence, System 2 achieves X\% accuracy,
+  compared to 54.6\% with retrieved evidence --- a gap of Y points
+  that is entirely attributable to retrieval quality.''
+  This is the strongest quantitative argument in the paper.
+}
 
-The \LaTeX{} and Bib\TeX{} style files provided roughly follow the American Psychological Association format.
-If your own bib file is named \texttt{custom.bib}, then placing the following before any appendices in your \LaTeX{} file will generate the references section for you:
-\begin{quote}
-\begin{verbatim}
-\bibliography{custom}
-\end{verbatim}
-\end{quote}
+% ----------------------------------------------------------------
+\subsection{Why Bi-Encoders Fail at Precision}
+% ----------------------------------------------------------------
 
-You can obtain the complete ACL Anthology as a Bib\TeX{} file from \url{https://aclweb.org/anthology/anthology.bib.gz}.
-To include both the Anthology and your own .bib file, use the following instead of the above.
-\begin{quote}
-\begin{verbatim}
-\bibliography{anthology,custom}
-\end{verbatim}
-\end{quote}
+Both TF-IDF and BGE score passages by their similarity to the claim in
+isolation.
+A passage about Arctic temperature trends will score highly for any
+claim mentioning Arctic temperatures, regardless of whether it supports
+or refutes the specific claim.
+The cross-encoder reranker, by contrast, reads the claim and passage
+jointly, allowing it to detect logical relationships.
+The 65\% relative improvement in F@5 (0.144 $\to$ 0.238) when adding
+the reranker, with no change to the coarse pool, confirms this
+interpretation.
 
-Please see Section~\ref{sec:bibtex} for information on preparing Bib\TeX{} files.
+% ----------------------------------------------------------------
+\subsection{NLI Pre-training and Minority Classes}
+% ----------------------------------------------------------------
 
-\subsection{Equations}
+Table~\ref{tab:main} shows that NLI initialisation (System 3) improves
+\textsc{Refutes} accuracy by 7.4 percentage points and
+\textsc{Not\_Enough\_Info} by 12.2 points relative to System 1.
+This is consistent with the structure of the NLI pre-training task:
+the model has already learned to distinguish entailment (claim follows
+from evidence), contradiction (claim is negated by evidence), and
+neutral (evidence is uninformative about the claim) --- a near-perfect
+mapping onto \textsc{Supports}, \textsc{Refutes}, and
+\textsc{Not\_Enough\_Info}.
 
-An example equation is shown below:
-\begin{equation}
-  \label{eq:example}
-  A = \pi r^2
-\end{equation}
+The \textsc{Disputed} class remains at 0\% across Systems 1--3.
+\textsc{Disputed} claims are structurally different: they have evidence
+on both sides, and the correct label requires recognising that the
+evidence is contradictory rather than uniformly supporting or refuting.
+\placeholder{%
+  If System 4 addresses DISPUTED (e.g.\ via evidence aggregation or
+  a post-processing step), add a forward reference here.
+  Otherwise, move this to Limitations.
+}
 
-Labels for equation numbers, sections, subsections, figures and tables
-are all defined with the \verb|\label{label}| command and cross references
-to them are made with the \verb|\ref{label}| command.
+% ----------------------------------------------------------------
+\subsection{Qualitative Analysis}
+% ----------------------------------------------------------------
 
-This an example cross-reference to Equation~\ref{eq:example}.
+\placeholder{%
+  QUALITATIVE ANALYSIS PLACEHOLDER --- to be completed before submission.
 
-\subsection{Appendices}
+  We need 2--3 short case studies drawn from the development set.
+  Use the script (to be written) that cross-references
+  dev-claims-predictions-v2.json, dev-claims-predictions-v3.json, and
+  dev-claims-predictions-v7.json against dev-claims.json to find:
 
-Use \verb|\appendix| before any appendix section to switch the section numbering over to letters. See Appendix~\ref{sec:appendix} for an example.
+  CASE STUDY 1 --- Retrieval failure (motivates the reranker):
+    Find a claim where:
+    - V2/V3 retrieved wrong evidence (no overlap with GT)
+    - V4/V7 retrieved correct evidence
+    - The label changed from wrong to correct as a result
+    Show: claim text, GT evidence (key sentence), retrieved evidence
+    (key sentence), and predictions from S1 vs S3.
+    Argument: the classifier is not at fault; the retriever is.
 
-\section{Bib\TeX{} Files}
-\label{sec:bibtex}
+  CASE STUDY 2 --- Classification failure despite correct retrieval:
+    Find a claim where:
+    - All systems retrieved the correct evidence (GT overlap > 0)
+    - But the classifier still predicted the wrong label
+    Show: claim text, evidence, and why the logical relationship is
+    subtle (e.g.\ requires numerical reasoning or world knowledge).
+    Argument: retrieval is not the only bottleneck; there is a ceiling
+    on what the classifier can do.
 
-Unicode cannot be used in Bib\TeX{} entries, and some ways of typing special characters can disrupt Bib\TeX's alphabetization. The recommended way of typing special characters is shown in Table~\ref{tab:accents}.
+  CASE STUDY 3 (optional) --- DISPUTED failure:
+    Pick any DISPUTED claim from the dev set.
+    Show that the evidence corpus contains passages on both sides.
+    Argue that the task requires detecting evidential conflict, not
+    just relevance.
 
-Please ensure that Bib\TeX{} records contain DOIs or URLs when possible, and for all the ACL materials that you reference.
-Use the \verb|doi| field for DOIs and the \verb|url| field for URLs.
-If a Bib\TeX{} entry has a URL or DOI field, the paper title in the references section will appear as a hyperlink to the paper, using the hyperref \LaTeX{} package.
+  Format each case study as a small indented block with:
+    Claim: ``...''
+    GT evidence: ``...'' (evidence-XXXXX)
+    Retrieved (S1): ``...'' (evidence-YYYYY)
+    S1 prediction: X  |  S3 prediction: Y  |  Ground truth: Z
+  Then 2--3 sentences of analysis.
 
+  Target: ~0.5 page total for all case studies.
+}
+
+% ================================================================
+\section{Conclusion}
+% ================================================================
+
+We have presented a decomposed approach to automated climate fact-checking
+that treats retrieval and classification as separately diagnosable
+components.
+Our analysis shows that retrieval quality is the dominant bottleneck in
+early systems: hybrid bi-encoder retrieval achieves high recall but poor
+precision, and a cross-encoder reranker trained on hard negatives is the
+single most impactful improvement (+65\% relative Evidence F-score).
+NLI pre-training provides complementary gains on the classification side,
+particularly for the logically demanding \textsc{Refutes} and
+\textsc{Not\_Enough\_Info} classes.
+
+The \textsc{Disputed} class remains largely unsolved, reflecting a
+structural challenge: these claims require detecting evidential conflict
+rather than simple support or refutation.
+Future work could address this through explicit evidence aggregation,
+contrastive evidence representations, or post-processing based on
+classifier confidence distributions.
+\placeholder{Add 1--2 sentences summarising System 4's contribution and
+any remaining limitations.}
+
+% ================================================================
 \section*{Limitations}
+% ================================================================
 
-This document does not cover the content requirements for ACL or any
-other specific venue.  Check the author instructions for
-information on
-maximum page lengths, the required ``Limitations'' section,
-and so on.
+Our systems are constrained to open-source models runnable on a single
+GPU, which limits the scale of the retrieval encoder and classifier.
+The training set of 1,228 claims is small relative to the complexity of
+the 4-class task, making the classifier susceptible to overfitting and
+class imbalance.
+The \textsc{Disputed} class (8.5\% of training data) is predicted as
+the majority class in most of our systems, indicating that the model
+has not learned a reliable signal for evidential conflict.
+All results are reported on the development set; test-set performance
+may differ due to distribution shift.
 
-\section*{Acknowledgments}
+% ================================================================
+\section*{Team Contributions}
+% ================================================================
 
-This document has been adapted
-by Steven Bethard, Ryan Cotterell and Rui Yan
-from the instructions for earlier ACL and NAACL proceedings, including those for
-ACL 2019 by Douwe Kiela and Ivan Vuli\'{c},
-NAACL 2019 by Stephanie Lukin and Alla Roskovskaya,
-ACL 2018 by Shay Cohen, Kevin Gimpel, and Wei Lu,
-NAACL 2018 by Margaret Mitchell and Stephanie Lukin,
-Bib\TeX{} suggestions for (NA)ACL 2017/2018 from Jason Eisner,
-ACL 2017 by Dan Gildea and Min-Yen Kan,
-NAACL 2017 by Margaret Mitchell,
-ACL 2012 by Maggie Li and Michael White,
-ACL 2010 by Jing-Shin Chang and Philipp Koehn,
-ACL 2008 by Johanna D. Moore, Simone Teufel, James Allan, and Sadaoki Furui,
-ACL 2005 by Hwee Tou Ng and Kemal Oflazer,
-ACL 2002 by Eugene Charniak and Dekang Lin,
-and earlier ACL and EACL formats written by several people, including
-John Chen, Henry S. Thompson and Donald Walker.
-Additional elements were taken from the formatting instructions of the \emph{International Joint Conference on Artificial Intelligence} and the \emph{Conference on Computer Vision and Pattern Recognition}.
+\placeholder{%
+  Fill in before submission. Suggested format:
+  [Author 1]: Systems 1 and 2 (pipeline\_v2.py, pipeline\_v3.py),
+              Abstract, Approach sections 2.1--2.2, Experiments setup.
+  [Author 2]: Systems 3 and 4 (pipeline\_v4.py, pipeline\_v7.py, ...),
+              Approach sections 2.3--2.4, Analysis.
+  [Author 3]: Report writing coordination, Results tables, Conclusion,
+              qualitative analysis, leaderboard submissions.
+}
 
-% Bibliography entries for the entire Anthology, followed by custom entries
-%\bibliography{custom,anthology-overleaf-1,anthology-overleaf-2}
-
-% Custom bibliography entries only
+% ================================================================
 \bibliography{custom}
-
-\appendix
-
-\section{Example Appendix}
-\label{sec:appendix}
-
-This is an appendix.
+% ================================================================
 
 \end{document}
