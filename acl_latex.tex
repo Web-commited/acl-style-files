@@ -19,8 +19,7 @@
 \newcommand{\placeholder}[1]{\textcolor{orange}{\textbf{[PLACEHOLDER: #1]}}}
 
 \title{Decomposing Automated Fact-Checking:\\
-Retrieval, Reranking, and NLI-Guided Classification\\
-for Climate Science Claims}
+Retrieval and Classification for Climate Science Claims}
 
 \author{
   \textbf{[Author 1]} \and \textbf{[Author 2]} \and \textbf{[Author 3]} \\
@@ -48,14 +47,12 @@ classification independently, and use it to guide a four-stage
 development process.
 Starting from a dense retrieval baseline (Evidence F-score = 0.147,
 Accuracy = 52.6\%), we show that hybrid retrieval alone does not improve
-precision despite improving recall, motivating a cross-encoder reranker
-that raises the Evidence F-score to 0.238 (+65\% relative).
-Replacing the classifier initialisation with a model pre-trained on
-Natural Language Inference (NLI) further improves classification accuracy
-to 59.1\%, particularly on the \textsc{Refutes} (+7.4\%) and
-\textsc{Not\_Enough\_Info} (+12.2\%) classes.
-Our best system achieves a Harmonic Mean of 0.334 on the development set.
-\placeholder{Update abstract with final test-set numbers and System 4 result before submission.}
+precision despite improving recall.
+\placeholder{%
+  Complete abstract once Systems 3 and 4 are finalised.
+  Include: what S3 does, its key result (F, A, H),
+  what S4 does, its key result, and the best overall Harmonic Mean.
+}
 
 \end{abstract}
 
@@ -91,12 +88,7 @@ Our contributions are as follows:
   \item We demonstrate that bi-encoder hybrid retrieval improves recall
         but not precision, and identify the ranking step as the primary
         bottleneck.
-  \item We show that a cross-encoder reranker trained on hard negatives
-        from the coarse retrieval pool yields the largest single
-        improvement in our pipeline (+65\% relative Evidence F-score).
-  \item We show that initialising the classifier from an NLI-pretrained
-        model substantially improves performance on minority classes,
-        particularly \textsc{Refutes} and \textsc{Not\_Enough\_Info}.
+  \item \placeholder{Add contribution of System 3 here once finalised.}
   \item \placeholder{Add contribution of System 4 (novel method) here.}
 \end{itemize}
 
@@ -195,7 +187,7 @@ The bottleneck is therefore not recall but \textbf{precision}: both
 retrievers score passages by surface-level or semantic similarity to the
 claim, but neither can model the logical relationship between a claim and
 a passage (e.g.\ whether the passage entails or contradicts the claim).
-This motivates a cross-encoder reranker in System 3.
+This motivates a more powerful ranking component in System 3.
 
 % ----------------------------------------------------------------
 % ----------------------------------------------------------------
@@ -276,13 +268,13 @@ This motivates a cross-encoder reranker in System 3.
   quality limits the classifier. This is the central argument.
 
   \subsection*{Why Bi-Encoders Fail at Precision}
-  Explain the 65\% relative F@5 improvement from the reranker.
-  Bi-encoders score independently; cross-encoders read jointly.
+  \placeholder{Fill in once System 3 retrieval approach is confirmed.
+  Explain why the S2 bi-encoder fails at precision and how S3 addresses it.}
 
-  \subsection*{NLI Pre-training and Minority Classes}
-  REFUTES +7.4\%, NEI +12.2\% from NLI initialisation.
-  Explain the structural alignment between NLI and fact-checking labels.
-  Note DISPUTED remains 0\% --- discuss why.
+  \subsection*{Classification Improvements in System 3}
+  \placeholder{Fill in once System 3 classifier is confirmed.
+  Discuss per-class accuracy changes, especially minority classes
+  (REFUTES, NEI, DISPUTED). Explain what architectural choice drives the gain.}
 
   \subsection*{Qualitative Analysis}
   % --- QUALITATIVE PLACEHOLDER ---
@@ -325,10 +317,10 @@ This motivates a cross-encoder reranker in System 3.
   Cover:
   - Retrieval quality is the dominant bottleneck (quantify with final numbers).
   - Cross-encoder reranking is the single most impactful improvement.
-  - NLI pre-training transfers well to fact verification.
+  - \placeholder{Summarise System 3's key contribution.}
   - DISPUTED class remains unsolved --- structural challenge.
   - Limitations: Colab compute, small training set, class imbalance.
-  - Future work: iterative retrieval, larger reranker, better DISPUTED handling.
+  - Future work: \placeholder{fill in once S3/S4 are known}.
   - Add 1--2 sentences on System 4's contribution.
   Target: ~0.25 page.
 }
