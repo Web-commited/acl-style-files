@@ -115,7 +115,6 @@ We encode all 1.2 million evidence passages using
 Embeddings are L2-normalised and stored in a matrix; at query time, each
 claim is encoded and the top-5 passages are retrieved by cosine
 similarity.
-Encoding the full corpus takes approximately 3.8 minutes on a single GPU.
 
 \paragraph{Classifier.}
 We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as a
@@ -187,32 +186,16 @@ The bottleneck is therefore not recall but \textbf{precision}: both
 retrievers score passages by surface-level or semantic similarity to the
 claim, but neither can model the logical relationship between a claim and
 a passage (e.g.\ whether the passage entails or contradicts the claim).
-This motivates a more powerful ranking component in System 3.
 
 % ----------------------------------------------------------------
 % ----------------------------------------------------------------
-\subsection{System 3 --- \placeholder{TO BE WRITTEN BY TEAMMATE}}
+\subsection{System 3 --- \placeholder{TO BE WRITTEN}}
 \label{sec:system3}
 % ----------------------------------------------------------------
 
 \placeholder{%
   SYSTEM 3 (final submission system) --- to be written by the teammate
-  responsible for the reranker + NLI classifier work.
 
-  Key points to cover:
-  \begin{itemize}
-    \item Motivation: S2 showed Recall@100 = 60.7\% but F@5 flat at 0.144.
-          The coarse pool has the right evidence; the problem is ranking it.
-          Bi-encoders cannot model claim--evidence logical interaction.
-    \item Retrieval: same hybrid coarse top-100, then DeBERTa cross-encoder
-          reranker trained on hard negatives (neg\_ratio=3, 3 epochs,
-          max\_length=256). Cite \citet{nogueira-cho-2019-passage}.
-    \item Classifier: NLI-pretrained DeBERTa (cross-encoder/nli-deberta-v3-base),
-          3-class head replaced with 4-class, same two-stage training.
-          Motivation: NLI labels (entailment/contradiction/neutral) map onto
-          SUPPORTS/REFUTES/NEI. Cite \citet{nie-etal-2020-adversarial}.
-    \item Key finding: F@5 0.144 $\to$ 0.238 (+65\%), accuracy 56.5\% $\to$ 59.1\%.
-  \end{itemize}
 }
 
 % ----------------------------------------------------------------
@@ -224,14 +207,6 @@ This motivates a more powerful ranking component in System 3.
   SYSTEM 4 (novel method) --- to be written by the teammate responsible
   for the novel contribution.
 
-  Suggested structure:
-  \begin{itemize}
-    \item Motivation: what specific weakness of System 3 does this address?
-    \item Method description with equations/architecture details.
-    \item Key design decisions and justification.
-    \item Citations to the 1--2 papers that inspired this.
-  \end{itemize}
-  Target length: roughly 0.5 columns.
 }
 
 % ================================================================
@@ -264,8 +239,6 @@ This motivates a more powerful ranking component in System 3.
   ANALYSIS section --- to be written collaboratively.
 
   \subsection*{Retrieval is the Primary Bottleneck}
-  Use the A(GT) vs A(Retrieved) gap to quantify how much retrieval
-  quality limits the classifier. This is the central argument.
 
   \subsection*{Why Bi-Encoders Fail at Precision}
   \placeholder{Fill in once System 3 retrieval approach is confirmed.
