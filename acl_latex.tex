@@ -37,29 +37,28 @@ Per-Evidence Reasoning for Climate Science Claims}
 
 Automated fact-checking requires retrieving relevant evidence from a
 large corpus and classifying claims based on that evidence.
-A persistent challenge is the \textsc{Disputed} class, which requires
-detecting that credible evidence exists on \emph{both sides} of a
-claim --- a signal that concatenation-based classifiers structurally
-cannot represent.
-We present a system for verifying climate science claims against a
-corpus of 1.2 million passages and propose three techniques:
+A hard challenge in this task is the \textsc{Disputed} class, which
+requires detecting that credible evidence exists on \emph{both sides}
+of a claim --- a signal that standard concatenation-based classifiers
+cannot capture.
+We build a system for verifying climate science claims against a corpus
+of 1.2 million passages and propose three techniques:
 (1)~a \textbf{conflict-aware aggregation} method that scores each
-evidence passage independently via Natural Language Inference (NLI),
-extracts inter-evidence conflict features, and feeds them to a
-lightweight classifier, achieving the first meaningful
+evidence passage independently using Natural Language Inference (NLI),
+extracts features about inter-evidence conflict, and feeds them to a
+lightweight classifier --- this achieves the first meaningful
 \textsc{Disputed} predictions (16.7\%, up from 0\% in
 concatenation-based systems);
-(2)~\textbf{NLI transfer learning} for fact-verification
-classification, which improves minority-class accuracy by up to
-14.6 percentage points by providing the classifier with pretrained
-representations of entailment and contradiction;
-(3)~a \textbf{hard-negative cross-encoder reranker} that distinguishes
+(2)~\textbf{NLI transfer learning} for classification, which improves
+minority-class accuracy by up to 14.6 percentage points by giving the
+classifier pretrained knowledge of entailment and contradiction;
+(3)~a \textbf{hard-negative cross-encoder reranker} that tells apart
 logically relevant evidence from topically similar passages, improving
-evidence precision by 47\% relative over hybrid bi-encoder retrieval.
+evidence precision by 47\% over hybrid bi-encoder retrieval.
 Our best system achieves a Harmonic Mean of 0.310 on the development
-set, with the conflict-aware approach demonstrating that
-\textsc{Disputed} detection requires dedicated architectural support
-beyond standard sequence classification.
+set, with the conflict-aware approach showing that \textsc{Disputed}
+detection needs dedicated architectural support beyond standard
+sequence classification.
 
 \end{abstract}
 
@@ -67,57 +66,58 @@ beyond standard sequence classification.
 \section{Introduction}
 % ================================================================
 
-The proliferation of unverified claims about climate science has made
-automated fact-checking an increasingly important NLP task
+The spread of unverified claims about climate science has made automated
+fact-checking an increasingly important NLP task
 \citep{diggelmann-etal-2020-climate}.
-Given a natural-language claim, a fact-checking system must (1)~retrieve
-the most relevant evidence passages from a large corpus, and
-(2)~classify the claim as \textsc{Supports}, \textsc{Refutes},
+Given a claim in natural language, a fact-checking system must
+(1)~retrieve the most relevant evidence passages from a large corpus,
+and (2)~classify the claim as \textsc{Supports}, \textsc{Refutes},
 \textsc{Not\_Enough\_Info}, or \textsc{Disputed} based on that evidence.
 
-Standard approaches concatenate retrieved evidence into a single input
+The common approach is to concatenate retrieved evidence into one input
 sequence and fine-tune a pretrained language model for classification.
-This works well when all evidence points in the same direction, but has
-a structural limitation: when evidence passages \emph{conflict} --- some
-supporting the claim, others refuting it --- the model must resolve
-these contradictions implicitly within a single forward pass.
-The \textsc{Disputed} label is precisely the case where this implicit
-resolution fails, as it requires detecting that credible evidence exists
-on both sides rather than identifying a single consistent relationship.
+This works when all evidence points in the same direction, but it has
+a key limitation: when evidence passages \emph{conflict} --- some
+supporting the claim, others refuting it --- the model has to resolve
+these contradictions implicitly in a single forward pass.
+The \textsc{Disputed} label is exactly the case where this fails,
+because it requires detecting that credible evidence exists on both
+sides, not just finding one consistent relationship.
 
-We address this limitation through three contributions:
+We address this with four contributions:
 \begin{itemize}
-  \item We propose a \textbf{per-evidence NLI scoring} approach with
-        \textbf{conflict-aware feature aggregation} that scores each
-        evidence passage independently and explicitly models
-        inter-evidence disagreement.
-        This achieves the first meaningful \textsc{Disputed} predictions
-        (16.7\%) where all concatenation-based systems score 0\%.
-  \item We show that \textbf{NLI transfer learning} provides strong
-        inductive bias for fact-verification classification, improving
-        \textsc{Refutes} by 7.4 and \textsc{Not\_Enough\_Info} by 14.6
-        percentage points by initialising the classifier with pretrained
-        entailment representations.
-  \item We demonstrate that a \textbf{cross-encoder reranker} trained on
-        hard negatives from the coarse retrieval pool resolves the
-        precision bottleneck in hybrid bi-encoder retrieval (+47\%
-        relative F@5), confirming that the challenge is ranking quality,
+  \item We show that a \textbf{cross-encoder reranker} trained on
+        hard negatives from the coarse retrieval pool fixes the
+        precision problem in hybrid bi-encoder retrieval (+47\%
+        relative F@5), confirming that the real challenge is ranking,
         not recall.
+  \item We show that \textbf{NLI transfer learning} gives strong
+        inductive bias for fact-verification, improving
+        \textsc{Refutes} by 7.4 and \textsc{Not\_Enough\_Info} by 14.6
+        percentage points through pretrained entailment representations.
+  \item We propose \textbf{conflict-aware feature aggregation} using
+        per-evidence NLI scoring, achieving the first meaningful
+        \textsc{Disputed} predictions (16.7\%) where all
+        concatenation-based systems get 0\%.
+  \item We develop an \textbf{end-to-end evidence-aware verifier} with
+        learned attention gating and per-evidence role prediction,
+        achieving the best Harmonic Mean (0.334) and the strongest
+        \textsc{Not\_Enough\_Info} performance (58.5\%).
 \end{itemize}
 
-We develop these techniques incrementally across four system variants,
-evaluating retrieval and classification independently at each stage to
-isolate the effect of each design choice.
+We develop these techniques across five system variants,
+measuring retrieval and classification separately at each stage to
+see the effect of each design choice clearly.
 
 % ================================================================
 \section{Approach}
 % ================================================================
 
-Our system follows a standard retrieve-then-classify pipeline.
+Our system follows a retrieve-then-classify pipeline.
 We first describe the retrieval backbone (Sections~\ref{sec:retrieval-base}
-and~\ref{sec:reranker}), then the classification components that
-represent our primary contributions
-(Sections~\ref{sec:nli-transfer} and~\ref{sec:conflict}).
+and~\ref{sec:reranker}), then the classification methods that are
+our main contributions (Sections~\ref{sec:nli-transfer}
+and~\ref{sec:conflict}).
 
 % ----------------------------------------------------------------
 \subsection{Retrieval Backbone}
@@ -125,28 +125,28 @@ represent our primary contributions
 % ----------------------------------------------------------------
 
 \paragraph{Hybrid bi-encoder retrieval.}
-We build a hybrid retriever combining sparse and dense signals.
-The sparse component indexes all 1.2 million evidence passages with
-TF-IDF (sklearn, max\_features = 100{,}000, English stop words removed)
+We build a hybrid retriever that combines sparse and dense signals.
+The sparse part indexes all 1.2 million evidence passages with TF-IDF
+(sklearn, max\_features = 100{,}000, English stop words removed)
 \citep{manning-etal-2008-ir}.
-The dense component encodes passages using \texttt{bge-base-en-v1.5}
-\citep{xiao-etal-2023-bge}, a 110M-parameter encoder producing
-768-dimensional L2-normalised embeddings optimised for retrieval.
-The two ranked lists are fused using Reciprocal Rank Fusion (RRF)
+The dense part encodes passages using \texttt{bge-base-en-v1.5}
+\citep{xiao-etal-2023-bge}, a 110M-parameter encoder that produces
+768-dimensional L2-normalised embeddings designed for retrieval.
+We merge the two ranked lists with Reciprocal Rank Fusion (RRF)
 \citep{cormack-etal-2009-reciprocal}:
 \begin{equation}
   \text{RRF}(d) = \sum_{r \in \{\text{TF-IDF},\, \text{BGE}\}}
   \frac{1}{k + \text{rank}_r(d)}, \quad k = 60
 \end{equation}
 
-The hybrid achieves F@5 = 0.144 on the development set --- marginally
-below TF-IDF alone (0.147), because the dense retriever introduces
+The hybrid gets F@5 = 0.144 on the development set --- slightly below
+TF-IDF alone (0.147), because the dense retriever brings in
 lower-precision candidates.
-However, the hybrid's Recall@100 = 60.7\% substantially exceeds either
-component alone, confirming that the correct evidence is present in the
-coarse candidate pool for the majority of claims.
-The hybrid's value lies in building a high-recall pool for reranking,
-not in top-5 precision.
+However, the hybrid's Recall@100 = 60.7\% is much higher than either
+part alone, meaning the correct evidence is already in the top-100
+pool for most claims.
+So the hybrid's value is in building a high-recall pool for reranking,
+not in top-5 precision directly.
 
 % ----------------------------------------------------------------
 \subsection{Hard-Negative Cross-Encoder Reranking}
@@ -154,36 +154,38 @@ not in top-5 precision.
 % ----------------------------------------------------------------
 
 \paragraph{Motivation.}
-Bi-encoders score query and document independently, capturing topical
-similarity but not the logical relationship between a claim and a
-candidate passage \citep{nogueira-cho-2019-passage}.
-A passage stating ``CO$_2$ levels have risen 40\%'' is topically similar
-to a claim about climate sensitivity but logically irrelevant as
-evidence.
-With Recall@100 = 60.7\%, the bottleneck is not finding evidence but
-\emph{ranking} it.
+Bi-encoders score query and document separately, so they capture
+topical similarity but not the logical relationship between a claim
+and a passage \citep{nogueira-cho-2019-passage}.
+For example, a passage saying ``CO$_2$ levels have risen 40\%'' is
+topically close to a claim about climate sensitivity, but it is not
+actually useful as evidence for or against that claim.
+Since Recall@100 is already 60.7\%, the problem is not finding
+evidence --- it is \emph{ranking} it correctly.
 
 \paragraph{Method.}
-We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as a
-binary cross-encoder reranker.
-The key design choice is the construction of training negatives:
+We fine-tune \texttt{DeBERTa-v3-base} \citep{he-etal-2021-deberta} as
+a binary cross-encoder reranker.
+The important design choice is how we build training negatives:
 \begin{itemize}
   \item \textbf{Positives}: (claim, ground-truth evidence), label = 1.
   \item \textbf{Hard negatives}: (claim, non-GT passage from the top-100
-        coarse pool), label = 0, sampled at 3:1 ratio.
+        pool), label = 0, sampled at 3:1 ratio.
 \end{itemize}
-Using passages from the coarse pool as negatives --- rather than random
-corpus passages --- produces hard negatives that are topically related
-but not logically relevant.
-This forces the reranker to learn logical relevance rather than topical
-filtering, which the bi-encoders already handle.
-Training: 3 epochs, batch size = 32, lr = 2e-5, max\_length = 256, fp32.
-At inference, all 100 candidates are scored and the top-5 selected.
+We use passages from the coarse pool as negatives instead of random
+corpus passages.
+These are hard negatives because they are topically related to the
+claim (they passed the bi-encoder filter) but are not actual evidence.
+This pushes the reranker to learn logical relevance, not just topical
+filtering --- the bi-encoders already handle that part.
+Training details: 3 epochs, batch size = 32, lr = 2e-5,
+max\_length = 256, fp32.
+At inference, we score all 100 candidates and pick the top-5.
 
 \paragraph{Result.}
-The reranker raises F@5 from 0.144 to 0.211 (+47\% relative) with
-Recall@100 unchanged, confirming the improvement is entirely due to
-better ranking within the existing pool.
+The reranker raises F@5 from 0.144 to 0.211 (+47\% relative) while
+Recall@100 stays the same, confirming that the gain comes entirely
+from better ranking within the existing pool.
 
 % ----------------------------------------------------------------
 \subsection{NLI Transfer for Classification}
@@ -191,49 +193,51 @@ better ranking within the existing pool.
 % ----------------------------------------------------------------
 
 \paragraph{Motivation.}
-With improved retrieval, classification becomes the binding constraint.
-Per-class analysis reveals that a DeBERTa-v3-base classifier initialised
-from generic pretraining achieves 77.9\% on \textsc{Supports} but only
+With better retrieval in place, classification becomes the weak point.
+Looking at per-class numbers, a DeBERTa-v3-base classifier trained
+from generic pretraining gets 77.9\% on \textsc{Supports} but only
 51.9\% on \textsc{Refutes} and 36.6\% on \textsc{Not\_Enough\_Info}.
-We hypothesise this stems from the lack of pretrained representations
-for logical relationships: the model has no prior understanding of
-entailment or contradiction.
+We think this is because the model starts with no understanding of
+entailment or contradiction --- it has to learn these concepts from
+scratch on our small training set.
 
-Natural Language Inference (NLI) pretraining provides exactly this
-inductive bias.
-NLI models classify premise--hypothesis pairs as \emph{entailment},
-\emph{contradiction}, or \emph{neutral} --- a taxonomy that maps
-directly onto fact-verification labels.
+Natural Language Inference (NLI) pretraining gives exactly this kind
+of knowledge.
+NLI models learn to classify premise--hypothesis pairs as
+\emph{entailment}, \emph{contradiction}, or \emph{neutral} --- which
+maps well onto our fact-verification labels.
 
 \paragraph{Method.}
-We replace the generic DeBERTa initialisation with
+We swap the generic DeBERTa initialisation for
 \texttt{cross-encoder/nli-deberta-v3-base}
-\citep{reimers-gurevych-2019-sentence}, fine-tuned on SNLI
+\citep{reimers-gurevych-2019-sentence}, which was fine-tuned on SNLI
 \citep{bowman-etal-2015-snli} and MultiNLI
 \citep{williams-etal-2018-multinli}.
-The classification head is extended from 3 to 4 labels (adding
-\textsc{Disputed}, randomly initialised).
-We apply a two-stage training procedure:
+We extend the classification head from 3 to 4 labels (adding
+\textsc{Disputed} with random initialisation).
+Training uses a two-stage procedure:
 \begin{enumerate}
   \item \textbf{Stage 1} (10 epochs, lr = 2e-5): train on ground-truth
-        evidence, providing clean signal about claim--evidence
+        evidence, so the model gets clean signal about claim--evidence
         relationships.
   \item \textbf{Stage 2} (5 epochs, lr = 5e-6): fine-tune on retrieved
-        evidence, adapting to the imperfect evidence encountered at
-        inference time.
+        evidence, so the model adapts to the noisy evidence it will
+        actually see at test time.
 \end{enumerate}
-This two-stage approach addresses the distribution mismatch between
-training (ground-truth evidence) and inference (retrieved evidence).
+This two-stage setup handles the gap between training (clean evidence)
+and inference (imperfect retrieved evidence).
 
 \paragraph{Result.}
-NLI initialisation raises accuracy from 54.6\% to 59.1\%, with gains
-concentrated on minority classes: \textsc{Refutes} +7.4pp (51.9\% $\to$
-59.3\%) and \textsc{Not\_Enough\_Info} +14.6pp (36.6\% $\to$ 51.2\%).
-This confirms that NLI pretraining provides a stronger prior for
-distinguishing contradiction from neutral evidence.
-However, \textsc{Disputed} drops from 11.1\% to 5.6\%: the NLI model's
-stronger neutral prior absorbs borderline disputed cases into
-\textsc{Not\_Enough\_Info}, motivating explicit conflict detection.
+NLI initialisation raises accuracy from 54.6\% to 59.1\%, with the
+biggest gains on minority classes: \textsc{Refutes} +7.4pp (51.9\%
+$\to$ 59.3\%) and \textsc{Not\_Enough\_Info} +14.6pp (36.6\% $\to$
+51.2\%).
+This shows that NLI pretraining gives the model a better starting
+point for telling apart contradiction and neutral evidence.
+However, \textsc{Disputed} drops from 11.1\% to 5.6\%: the NLI
+model's stronger sense of ``neutral'' causes it to absorb some
+borderline disputed cases into \textsc{Not\_Enough\_Info}.
+This motivates building explicit conflict detection in the next system.
 
 % ----------------------------------------------------------------
 \subsection{Per-Evidence NLI with Conflict-Aware Aggregation}
@@ -241,64 +245,66 @@ stronger neutral prior absorbs borderline disputed cases into
 % ----------------------------------------------------------------
 
 \paragraph{Motivation.}
-All previous classifiers concatenate retrieved evidence into a single
-input sequence.
-This has a structural limitation: when passages conflict, the model must
-resolve contradictions implicitly within one forward pass.
-The \textsc{Disputed} label --- requiring detection of credible evidence
-on \emph{both sides} --- is precisely where this fails.
+All previous classifiers concatenate retrieved evidence into one input
+sequence.
+This creates a problem: when passages conflict, the model has to figure
+out the contradictions on its own within a single forward pass.
+The \textsc{Disputed} label --- which needs detection of credible
+evidence on \emph{both sides} --- is exactly where this breaks down.
 Across all concatenation-based variants, \textsc{Disputed} accuracy
-remains at or near 0\%.
+stays at or near 0\%.
 
-We draw on recent work showing that reasoning over evidence \emph{sets}
-rather than concatenated strings improves verification quality
+Recent work has shown that reasoning over evidence \emph{sets} rather
+than concatenated strings helps verification quality
 \citep{shang-etal-2024-rafts, kapadia-etal-2025-minimal}.
-Our key insight is that inter-evidence \emph{conflict} --- the
-simultaneous presence of entailing and contradicting passages --- is a
-first-class signal that should be an explicit input to classification,
-not something the model must discover implicitly.
+Our main idea is simple: inter-evidence \emph{conflict} --- when some
+passages entail the claim while others contradict it --- should be a
+direct input to the classifier, not something the model has to discover
+on its own from a mixed token sequence.
 
 \paragraph{Per-evidence NLI scoring.}
-Instead of concatenating all top-5 passages, we score each passage
-\emph{individually} against the claim using the NLI model.
-For each (claim, evidence$_i$) pair, we obtain:
+Instead of concatenating all top-5 passages together, we score each
+passage \emph{separately} against the claim using the NLI model.
+For each (claim, evidence$_i$) pair, we get a 3-dimensional probability
+vector:
 \begin{equation}
   \mathbf{p}_i = [\,P(\text{contradiction}),\; P(\text{entailment}),\;
   P(\text{neutral})\,]
 \end{equation}
-This produces a per-claim \textbf{evidence signal matrix}
-$\mathbf{P} \in \mathbb{R}^{k \times 3}$.
+This gives us a per-claim \textbf{evidence signal matrix}
+$\mathbf{P} \in \mathbb{R}^{k \times 3}$, where each row tells us
+how one piece of evidence relates to the claim.
 
 \paragraph{Conflict-aware feature extraction.}
-From $\mathbf{P}$, we extract 19 features designed to capture four
-types of signal:
+From $\mathbf{P}$, we compute 19 features that capture four kinds of
+information:
 \begin{itemize}
   \item \textbf{Aggregate statistics} (9): mean, max, and standard
         deviation of each NLI dimension across passages.
-  \item \textbf{Dominance} (3): fraction of passages where each NLI
-        label has highest probability.
-  \item \textbf{Conflict indicators} (4): minimum of max-entailment and
-        max-contradiction (high when both are present), entropy of
-        dominant labels, and fraction of mixed-signal passages.
+  \item \textbf{Dominance} (3): what fraction of passages have each NLI
+        label as their highest probability.
+  \item \textbf{Conflict indicators} (4): the minimum of max-entailment
+        and max-contradiction (this is high when both exist),
+        entropy of dominant labels, and fraction of mixed-signal
+        passages.
   \item \textbf{Sufficiency} (3): fraction of informative (non-neutral)
         passages, average confidence, and evidence count.
 \end{itemize}
 
-The conflict indicators are the critical features for \textsc{Disputed}:
-they are high when some passages entail the claim while others
-contradict it --- exactly the pattern that defines this class.
-Concatenation-based classifiers have no access to this signal because
-the per-passage NLI relationships are collapsed into a single sequence
-representation.
+The conflict indicators are the key features for \textsc{Disputed}:
+they fire when some passages entail the claim while others contradict
+it --- which is exactly what defines this class.
+A concatenation-based classifier cannot access this signal because the
+per-passage relationships get mixed together into one representation.
 
 \paragraph{Hybrid aggregation.}
 We combine the 19 conflict features with 12 features from the NLI
 classifier's output (4-class logits, softmax probabilities, and
 log-probabilities).
-The combined 31-dimensional vector is fed to a lightweight MLP
-(64--32 hidden units, ReLU, L2 regularisation $\alpha = 0.01$).
-This gives the aggregator explicit access to both the classifier's
-holistic judgment and the per-evidence conflict patterns.
+The full 31-dimensional vector goes into a lightweight MLP (64--32
+hidden units, ReLU, L2 regularisation $\alpha = 0.01$).
+This way the aggregator can use both the classifier's overall judgment
+and the per-evidence conflict patterns together.
 
 \begin{figure}[t]
 \centering
@@ -333,21 +339,74 @@ holistic judgment and the per-evidence conflict patterns.
       {SUP, REF, NEI, DISPUTED}
 \end{verbatim}
 \caption{System 4 architecture. The left branch processes concatenated
-evidence holistically; the right branch scores each passage individually
-and extracts conflict features. The aggregator combines both signals,
-giving it explicit access to inter-evidence disagreement patterns.}
+evidence as a whole; the right branch scores each passage on its own
+and extracts conflict features. The aggregator combines both, giving
+it direct access to inter-evidence disagreement patterns.}
 \label{fig:system4}
 \end{figure}
 
 \paragraph{Result.}
-The conflict-aware aggregator achieves \textsc{Disputed} = 16.7\%
-(3/18 correct) --- the first system to meaningfully predict this class.
+The conflict-aware aggregator gets \textsc{Disputed} = 16.7\% (3/18
+correct) --- the first system to predict this class in a meaningful way.
 With balanced class weights, \textsc{Disputed} reaches 33.3\% (6/18)
-at the cost of overall accuracy (dropping from 55.8\% to 51.3\%).
-Ablation confirms that removing the conflict features while retaining
-the DeBERTa logits reduces \textsc{Disputed} back to near 0\%,
-demonstrating that these features provide signal structurally
-inaccessible to concatenation-based approaches.
+but overall accuracy drops from 55.8\% to 51.3\%.
+Ablation shows that removing the conflict features while keeping the
+DeBERTa logits brings \textsc{Disputed} back to near 0\%, confirming
+that these features carry signal that concatenation-based approaches
+simply cannot access.
+
+% ----------------------------------------------------------------
+\subsection{System 5 --- End-to-End Evidence-Aware Verifier}
+\label{sec:system5}
+% ----------------------------------------------------------------
+
+\paragraph{Motivation.}
+System 4 demonstrated that per-evidence reasoning improves
+\textsc{Disputed} detection, but its two-branch design has a
+fundamental limitation: the DeBERTa classifier and the NLI scorer
+are trained independently, and only a lightweight sklearn model
+connects them.
+Gradients cannot flow from the final prediction back through the
+evidence encoder, so the encoder never learns to produce
+representations optimised for conflict detection.
+
+\paragraph{Architecture.}
+We replace the two-branch post-hoc aggregation with a single
+end-to-end model.
+Given a claim and $k$ retrieved evidence passages, the model:
+\begin{enumerate}
+  \item Encodes each (claim, evidence$_i$) pair independently through
+        a shared DeBERTa encoder with gradient checkpointing, producing
+        $k$ CLS representations.
+  \item Applies a \textbf{learned attention gate} over the $k$
+        representations, allowing the model to downweight irrelevant
+        evidence automatically.
+  \item Predicts a \textbf{per-evidence role} (support/refute/neutral)
+        via a 3-class head, analogous to System 4's NLI scoring but
+        trained jointly with the final objective.
+  \item Computes \textbf{structured conflict features} from the gated
+        role predictions: max support, max refute, conflict strength
+        ($\min(\max_{\text{sup}}, \max_{\text{ref}})$), and
+        support--refute gap.
+  \item Concatenates the attention-pooled representation with the
+        structured features and classifies via a two-layer MLP.
+\end{enumerate}
+The entire model is trained end-to-end with cross-entropy loss,
+using the same two-stage procedure (gold evidence, then retrieved).
+Training uses batch size 2 with gradient accumulation (effective
+batch 8) and max sequence length 192 to fit within T4 memory.
+
+\paragraph{Result.}
+System 5 achieves 59.1\% accuracy --- matching System 3's NLI transfer
+result but through a purely architectural mechanism rather than
+pretraining.
+The largest gain is on \textsc{Not\_Enough\_Info} (58.5\%, up from
+36.6\% in System 2), confirming that per-evidence encoding helps the
+model recognise when \emph{none} of the retrieved passages individually
+entails the claim.
+\textsc{Disputed} remains at 0\%, indicating that the cross-entropy
+loss alone does not incentivise learning this minority class without
+explicit class balancing --- a limitation we discuss in the Analysis.
 
 % ================================================================
 \section{Experiments}
@@ -358,25 +417,26 @@ inaccessible to concatenation-based approaches.
 \paragraph{Dataset.}
 1{,}228 training claims, 154 development claims, and 1{,}208{,}827
 evidence passages.
-Label distribution is imbalanced: \textsc{Supports} (42.3\% train,
+The label distribution is imbalanced: \textsc{Supports} (42.3\% train,
 44.2\% dev), \textsc{Not\_Enough\_Info} (31.4\%, 26.6\%),
 \textsc{Refutes} (16.2\%, 17.5\%), \textsc{Disputed} (10.1\%, 11.7\%).
 
 \paragraph{Metrics.}
-Following the provided evaluation script:
+We follow the provided evaluation script and report:
 (1)~Evidence Retrieval F-score ($F$): mean per-claim F1 between
 predicted and ground-truth evidence sets;
 (2)~Classification Accuracy ($A$);
 (3)~Harmonic Mean: $H = 2FA/(F+A)$.
-We evaluate retrieval and classification independently at each stage
-to isolate the effect of each design choice.
+We measure retrieval and classification separately at each stage to
+see what each design choice actually affects.
 
 \paragraph{Hardware.}
-Google Colab (NVIDIA T4, 15GB VRAM).
-Training times: 5--20 minutes per component.
-fp32 for the reranker (numerical stability); fp16 for the classifier.
-Results vary $\pm$2\% across runs due to non-determinism in
-mixed-precision training and random negative sampling.
+Google Colab with NVIDIA T4 (15GB VRAM).
+Training takes 5--20 minutes per component.
+We use fp32 for the reranker (needed for numerical stability) and fp16
+for the classifier (to save memory).
+Results vary by about $\pm$2\% across runs because of non-determinism
+in mixed-precision training and random negative sampling.
 
 \subsection{Results}
 
@@ -389,15 +449,16 @@ mixed-precision training and random negative sampling.
 \midrule
 Hybrid bi-encoder (baseline) & 0.144 & 54.6\% & 0.228 \\
 + Cross-encoder reranker & 0.211 & 54.6\% & 0.305 \\
-+ NLI transfer & 0.205 & \textbf{59.1\%} & 0.305 \\
++ NLI transfer & 0.205 & 59.1\% & 0.305 \\
 + Conflict-aware agg. & \textbf{0.215} & 55.8\% & \textbf{0.310} \\
++ End-to-end verifier & 0.238 & \textbf{59.1\%} & \textbf{0.334} \\
 \bottomrule
 \end{tabular}
 \caption{End-to-end results on the development set. Each row adds one
-technique to the previous system. The reranker improves retrieval;
-NLI transfer improves classification; conflict-aware aggregation
-achieves the best overall Harmonic Mean.
-Results vary $\pm$2\% across runs.}
+technique to the previous system. The reranker helps retrieval; NLI
+transfer helps classification; the end-to-end verifier achieves the
+best Harmonic Mean by combining strong retrieval with per-evidence
+encoding. Results vary $\pm$2\% across runs.}
 \label{tab:main-results}
 \end{table}
 
@@ -410,22 +471,23 @@ Results vary $\pm$2\% across runs.}
 \midrule
 Hybrid baseline & 77.9 & 55.6 & 39.0 & 0.0 \\
 + Reranker & 77.9 & 51.9 & 36.6 & 11.1 \\
-+ NLI transfer & 77.9 & \textbf{59.3} & \textbf{51.2} & 5.6 \\
++ NLI transfer & 77.9 & \textbf{59.3} & 51.2 & 5.6 \\
 + Conflict agg. & 75.0 & 44.4 & 48.8 & \textbf{16.7} \\
++ E2E verifier & 76.5 & 55.6 & \textbf{58.5} & 0.0 \\
 \bottomrule
 \end{tabular}
-\caption{Per-class accuracy (\%). NLI transfer provides the largest
-gains on \textsc{Refutes} and \textsc{Not\_Enough\_Info}. Only the
-conflict-aware system achieves meaningful \textsc{Disputed} predictions.}
+\caption{Per-class accuracy (\%). NLI transfer improves
+\textsc{Refutes}; the end-to-end verifier achieves the best
+\textsc{Not\_Enough\_Info} (58.5\%). Only the conflict-aware
+aggregator (System 4) predicts \textsc{Disputed} meaningfully.}
 \label{tab:per-class}
 \end{table}
 
 \subsection{Ablation: Conflict Features}
 
-To confirm that the conflict features --- rather than the MLP
-architecture or the additional parameters --- drive the
-\textsc{Disputed} improvement, we train the aggregator under three
-conditions:
+To check that the conflict features --- not just the MLP or the extra
+parameters --- are what drives the \textsc{Disputed} improvement, we
+train the aggregator with three different input configurations:
 
 \begin{table}[h]
 \centering
@@ -439,20 +501,20 @@ Conflict features only (19 dims) & 50.0\% & 11.1\% \\
 Combined (31 dims) & 55.8\% & 16.7\% \\
 \bottomrule
 \end{tabular}
-\caption{Ablation on the aggregator input features. Conflict features
-are necessary for \textsc{Disputed} predictions; DeBERTa logits are
-necessary for overall accuracy. The combination achieves both.}
+\caption{Ablation on aggregator inputs. Conflict features are needed
+for \textsc{Disputed}; DeBERTa logits are needed for overall accuracy.
+The combination gets both.}
 \label{tab:ablation}
 \end{table}
 
-The DeBERTa-only aggregator achieves 0\% on \textsc{Disputed} ---
-identical to the concatenation-based classifier it wraps --- confirming
-that the MLP architecture alone does not help.
-The conflict-only aggregator detects some \textsc{Disputed} cases but
-sacrifices overall accuracy because it lacks the holistic claim--evidence
-representation.
-The combination achieves both: reasonable overall accuracy and meaningful
-\textsc{Disputed} detection.
+With only DeBERTa logits, the aggregator gets 0\% on \textsc{Disputed}
+--- same as the concatenation classifier it wraps --- so the MLP alone
+does not help.
+With only conflict features, the system catches some \textsc{Disputed}
+cases but loses overall accuracy because it lacks the full
+claim--evidence representation.
+Combining both gives reasonable accuracy and meaningful \textsc{Disputed}
+detection at the same time.
 
 % ================================================================
 \section{Analysis}
@@ -460,53 +522,52 @@ The combination achieves both: reasonable overall accuracy and meaningful
 
 \subsection{Why Concatenation Fails for DISPUTED}
 
-The \textsc{Disputed} class is fundamentally different from the other
-three labels.
+\textsc{Disputed} is different from the other three labels in a basic
+way.
 \textsc{Supports}, \textsc{Refutes}, and \textsc{Not\_Enough\_Info}
-each require identifying a single consistent relationship between the
+each need the model to find one consistent relationship between the
 claim and its evidence.
-\textsc{Disputed} requires detecting that the evidence \emph{itself}
-is internally inconsistent --- some passages support the claim while
-others refute it.
+\textsc{Disputed} needs the model to notice that the evidence
+\emph{itself} is inconsistent --- some passages support the claim
+while others go against it.
 
-When evidence is concatenated into a single sequence, the per-passage
-logical relationships are collapsed into a single representation.
-The model sees tokens from both supporting and refuting passages
-interleaved, but has no explicit signal indicating which passages
-agree and which disagree.
-Our per-evidence scoring preserves this structure: the conflict
-indicators are high precisely when the evidence matrix contains both
+When we concatenate evidence into one sequence, the per-passage logical
+relationships get collapsed into one mixed representation.
+The model sees tokens from supporting and refuting passages together,
+but nothing tells it which passages agree and which disagree.
+Our per-evidence scoring keeps this structure intact: the conflict
+indicators go high exactly when the evidence matrix has both
 high-entailment and high-contradiction rows.
 
 \subsection{NLI Transfer: Matching Pretraining to Task Structure}
 
 The NLI $\to$ fact-verification transfer works because the label
-taxonomies are structurally aligned:
+systems line up well:
 \emph{entailment} $\approx$ \textsc{Supports},
 \emph{contradiction} $\approx$ \textsc{Refutes},
 \emph{neutral} $\approx$ \textsc{Not\_Enough\_Info}.
-The +14.6pp gain on \textsc{Not\_Enough\_Info} is particularly notable:
-this class requires recognising that evidence is topically related but
-logically insufficient --- exactly the ``neutral'' relationship that
-NLI pretraining teaches.
+The +14.6pp gain on \textsc{Not\_Enough\_Info} stands out: this class
+needs the model to recognise that evidence is topically related but
+does not actually say enough to verify the claim --- exactly the
+``neutral'' relationship that NLI training teaches.
 
-The slight drop in \textsc{Disputed} (11.1\% $\to$ 5.6\%) under NLI
-transfer reveals an interesting failure mode: the model's stronger
-neutral prior causes it to classify conflicting evidence as
-``insufficient'' rather than ``disputed.''
-This confirms that \textsc{Disputed} requires architectural support
-(explicit conflict detection) rather than just better representations.
+The drop in \textsc{Disputed} (11.1\% $\to$ 5.6\%) under NLI transfer
+shows an interesting failure: the model's stronger sense of ``neutral''
+makes it label conflicting evidence as ``not enough info'' instead of
+``disputed.''
+This tells us that \textsc{Disputed} needs architectural support
+(explicit conflict detection), not just better representations.
 
 \subsection{Reranking: From Topical to Logical Relevance}
 
-The 47\% relative improvement in F@5 from the cross-encoder reranker
-demonstrates a clear principle: bi-encoders capture \emph{what} a
-passage is about, while cross-encoders capture \emph{how} it relates
-to the claim.
-The hard-negative training strategy is critical --- using random
-negatives would teach the reranker to distinguish climate passages from
-non-climate passages (which the bi-encoders already do), rather than
-distinguishing logically relevant from merely topical passages.
+The 47\% relative gain in F@5 from the cross-encoder shows a clear
+point: bi-encoders capture \emph{what} a passage is about, while
+cross-encoders capture \emph{how} it relates to the claim.
+The hard-negative strategy matters here --- if we used random negatives,
+the reranker would just learn to tell climate passages from non-climate
+passages (which the bi-encoders already do).
+By using passages from the coarse pool as negatives, we force it to
+learn the harder distinction: logically relevant vs.\ merely topical.
 
 \subsection{Qualitative Examples}
 
@@ -514,87 +575,86 @@ distinguishing logically relevant from merely topical passages.
 \emph{Claim:} ``Volcanoes emit around 0.3 billion tonnes of CO2 per
 year.'' (GT: \textsc{Disputed})
 
-Retrieved evidence includes ``400,000 $\pm$ 100,000 tonnes per year''
-(single volcano) and ``130 to 230 teragrams of carbon dioxide per year''
-(global estimate).
-The NLI model assigns high entailment to the global estimate and
-moderate contradiction to the single-volcano figure.
-The conflict indicators detect this mixed signal, and the aggregator
+The retrieved evidence includes ``400,000 $\pm$ 100,000 tonnes per
+year'' (for a single volcano) and ``130 to 230 teragrams of carbon
+dioxide per year'' (a global estimate).
+The NLI model gives high entailment to the global estimate and moderate
+contradiction to the single-volcano figure.
+The conflict indicators pick up this mixed signal, and the aggregator
 correctly predicts \textsc{Disputed}.
-All concatenation-based systems predict \textsc{Supports}.
+All concatenation-based systems predict \textsc{Supports} instead.
 
-\paragraph{Retrieval failure resolved by reranking.}
+\paragraph{Retrieval failure fixed by reranking.}
 \emph{Claim:} ``While members of the media may nod along to such claims
 [about weather extremes], the evidence paints a different story.''
 (GT: \textsc{Supports})
 
-The bi-encoder retrieves topically similar but logically irrelevant
-passages (e.g.\ ``There is no evidence to substantiate these unorthodox
-claims'').
-The cross-encoder reranker identifies the correct evidence discussing
-media representation of climate extremes, enabling correct
-classification.
+The bi-encoder retrieves topically similar but wrong passages (e.g.\
+``There is no evidence to substantiate these unorthodox claims'').
+The cross-encoder reranker finds the correct evidence about media
+coverage of climate extremes, and the classifier then gets it right.
 
-\paragraph{Classification failure despite correct retrieval.}
+\paragraph{Classification failure even with correct retrieval.}
 \emph{Claim:} ``[Riebesell] is a world authority on the topic and has
 typically communicated cautiously about the effects of acidification.''
 (GT: \textsc{Not\_Enough\_Info})
 
 The reranker retrieves relevant passages about ocean chemistry, but the
 classifier predicts \textsc{Supports}.
-The evidence describes the scientific field without addressing
-Riebesell's communication style --- a subtle distinction requiring
-understanding of what the claim is \emph{actually asking} rather than
-what it is \emph{about}.
+The evidence talks about the scientific field but says nothing about
+Riebesell's communication style --- a subtle difference between what
+the claim is \emph{about} and what it is \emph{actually asking}.
 
 % ================================================================
 \section{Conclusion}
 % ================================================================
 
-We presented a fact-checking system for climate science claims built
-around three technical contributions.
-Our primary finding is that the \textsc{Disputed} class requires
-dedicated architectural support: per-evidence NLI scoring with
-conflict-aware feature aggregation achieves 16.7\% accuracy on this
-class where all concatenation-based approaches score 0\%, demonstrating
-that inter-evidence disagreement is a detectable signal when made an
-explicit input to classification.
-NLI transfer learning provides strong inductive bias for minority
-classes (+14.6pp on \textsc{Not\_Enough\_Info}, +7.4pp on
-\textsc{Refutes}), confirming that the structural alignment between
-NLI and fact-verification taxonomies transfers effectively.
-Hard-negative cross-encoder reranking resolves the precision bottleneck
-in bi-encoder retrieval (+47\% relative F@5), with the hard-negative
-strategy being critical for learning logical rather than topical
-relevance.
+We built a fact-checking system for climate science claims with four
+main technical contributions.
+Our primary finding is that per-evidence reasoning --- whether through
+post-hoc conflict features (System 4) or end-to-end learned gating
+(System 5) --- substantially improves classification over concatenation.
+System 5's end-to-end evidence-aware verifier achieves the best
+Harmonic Mean (0.334) by combining strong retrieval with learned
+per-evidence attention, and achieves 58.5\% on \textsc{Not\_Enough\_Info}
+(+22pp over the reranker baseline) by recognising when no individual
+passage entails the claim.
+System 4's conflict-aware aggregation is the only approach that
+predicts \textsc{Disputed} (16.7\%), showing that explicit conflict
+features carry signal that end-to-end training alone does not surface
+without class balancing.
+NLI transfer learning gives strong inductive bias for minority classes
+(+14.6pp on \textsc{Not\_Enough\_Info}, +7.4pp on \textsc{Refutes}).
+Hard-negative cross-encoder reranking fixes the precision problem in
+bi-encoder retrieval (+47\% relative F@5).
 
-The \textsc{Disputed} class remains challenging: with only 18
-development examples and a Recall@100 ceiling of 61\%, both data
-scarcity and retrieval coverage limit further progress.
-Future work could explore multi-hop retrieval to actively seek evidence
-on both sides of a claim, and contrastive training objectives that
-explicitly reward detecting evidential disagreement.
+\textsc{Disputed} remains hard: with only 18 development examples and
+a Recall@100 ceiling of 61\%, both data scarcity and retrieval coverage
+limit what we can achieve.
+Future work could add class-weighted loss to System 5's end-to-end
+training, and explore multi-hop retrieval to actively find evidence on
+both sides of a claim.
 
 % ================================================================
 \section*{Limitations}
 % ================================================================
 
-Our system operates under several constraints.
-First, DeBERTa-v3 requires fp32 for the reranker due to numerical
-instability in half-precision, limiting batch sizes on the T4 GPU
-(15GB VRAM) and introducing $\pm$2\% variance across runs.
-Second, the training set contains only 124 \textsc{Disputed} examples
-(10.1\%), making it difficult to learn reliable decision boundaries for
-this class.
-Third, our Recall@100 ceiling of 61\% means that for nearly 40\% of
-claims, the correct evidence is never in the candidate pool regardless
-of reranker quality.
-Fourth, the conflict-aware aggregator operates on a 31-dimensional
-feature space over 1{,}228 training examples --- a setting where
-overfitting is a concern despite L2 regularisation.
-Finally, we are restricted to the provided dataset and cannot augment
-training with external fact-checking corpora, which limits the
-diversity of conflict patterns the system can learn.
+Our system has several constraints.
+First, DeBERTa-v3 needs fp32 for the reranker because of numerical
+problems in half-precision, which limits batch sizes on the T4 GPU
+(15GB VRAM) and causes about $\pm$2\% variance between runs.
+Second, the training set has only 124 \textsc{Disputed} examples
+(10.1\%), making it hard to learn good decision boundaries for this
+class.
+Third, our Recall@100 ceiling of 61\% means that for almost 40\% of
+claims, the correct evidence never enters the candidate pool no matter
+how good the reranker is.
+Fourth, the conflict-aware aggregator works with a 31-dimensional
+feature space over just 1{,}228 training examples --- a setting where
+overfitting is a real risk even with L2 regularisation.
+Finally, we can only use the provided dataset and cannot add external
+fact-checking data, which limits the variety of conflict patterns the
+system can learn from.
 
 % ================================================================
 \section*{Team Contributions}
