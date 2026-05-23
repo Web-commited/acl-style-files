@@ -51,16 +51,17 @@ combining sparse and dense retrieval improves recall but not precision:
 the correct evidence is present in the top-100 candidate pool for 60.7\%
 of claims, yet F@5 remains flat.
 Adding a cross-encoder reranker trained on hard negatives raises Evidence
-F@5 to 0.238 (+65\% relative) with no change to the candidate pool,
+F@5 to 0.211 (+47\% relative) with no change to the candidate pool,
 confirming that the bottleneck is ranking, not recall.
 Initialising the classifier from an NLI-pretrained model improves
-minority-class accuracy by up to 12.2 percentage points, confirming
+minority-class accuracy by up to 14.6 percentage points, confirming
 that entailment pretraining provides strong inductive bias for
 fact verification.
 Finally, we propose a per-evidence NLI scoring approach with
 conflict-aware feature aggregation that achieves the first meaningful
-predictions of the \textsc{Disputed} class (27.8\%, up from 0\%),
-yielding an overall Harmonic Mean of 0.339.
+predictions of the \textsc{Disputed} class (16.7\%, up from 0\%),
+demonstrating that inter-evidence conflict signals are detectable
+with lightweight feature extraction.
 
 \end{abstract}
 
@@ -95,10 +96,10 @@ Our contributions are as follows:
 \begin{itemize}
   \item We demonstrate that hybrid bi-encoder retrieval improves recall
         but not precision, and show that a cross-encoder reranker trained
-        on hard negatives resolves this bottleneck (+65\% relative F@5).
+        on hard negatives resolves this bottleneck (+47\% relative F@5).
   \item We show that NLI transfer learning provides strong inductive bias
         for fact-verification classification, improving minority-class
-        accuracy by up to 12.2 percentage points.
+        accuracy by up to 14.6 percentage points.
   \item We propose a per-evidence NLI scoring approach with conflict-aware
         feature aggregation that explicitly models inter-evidence
         disagreement to address the \textsc{Disputed} class.
@@ -112,8 +113,6 @@ All systems share the same high-level pipeline: a \textbf{retrieval
 stage} that selects a small set of evidence passages for each claim,
 followed by a \textbf{classification stage} that predicts the claim
 label given those passages.
-We describe two fully implemented systems here; Systems 3 and 4 are
-documented separately by other team members.
 Each system is motivated by a specific weakness identified in the
 previous one.
 
@@ -241,13 +240,13 @@ This keeps the classification component controlled, isolating the effect
 of the reranker on end-to-end performance.
 
 \paragraph{Key finding.}
-The cross-encoder reranker raises Evidence F@5 from 0.144 to 0.238,
-a 65\% relative improvement, while Recall@100 remains unchanged at
+The cross-encoder reranker raises Evidence F@5 from 0.144 to 0.211,
+a 47\% relative improvement, while Recall@100 remains unchanged at
 60.7\%.
 This confirms that the improvement is entirely due to better ranking
 within the existing candidate pool, not to retrieving new evidence.
-Overall classification accuracy improves from 54.6\% to 56.5\%,
-and the Harmonic Mean rises from 0.228 to 0.334.
+Overall classification accuracy remains at 54.6\%,
+and the Harmonic Mean rises from 0.228 to 0.305.
 
 % ----------------------------------------------------------------
 \subsection{System 3 --- NLI Transfer for Classification (V7)}
@@ -256,11 +255,11 @@ and the Harmonic Mean rises from 0.228 to 0.334.
 
 \paragraph{Motivation.}
 System 2 resolved the retrieval bottleneck: F@5 rose from 0.144 to
-0.238.
-However, classification accuracy improved only modestly (54.6\% to
-56.5\%), and per-class analysis reveals a severe imbalance:
-\textsc{Supports} reaches 91.2\%, but \textsc{Refutes} = 51.9\%,
-\textsc{Not\_Enough\_Info} = 26.8\%, and \textsc{Disputed} = 0\%.
+0.211 in our best run.
+However, classification accuracy remained flat at 54.6\%,
+and per-class analysis reveals a severe imbalance:
+\textsc{Supports} reaches 77.9\%, but \textsc{Refutes} = 51.9\%,
+\textsc{Not\_Enough\_Info} = 36.6\%, and \textsc{Disputed} = 11.1\%.
 The bottleneck has shifted from retrieval to classification ---
 specifically, the classifier's inability to distinguish logical
 relationships beyond surface-level support.
@@ -287,8 +286,10 @@ with the new output weights randomly initialised.
 We retain the same hybrid + cross-encoder reranker pipeline from
 System 2.
 The NLI model is also used to initialise the reranker (replacing the
-generic DeBERTa initialisation), though we find this yields only a
-marginal difference in retrieval F@5 (0.213 vs.\ 0.238).
+generic DeBERTa initialisation), though we find this yields a lower
+retrieval F@5 (0.205 vs.\ 0.215 with plain DeBERTa), suggesting that
+NLI pretraining biases the model toward entailment reasoning rather
+than binary relevance classification.
 
 \paragraph{Classifier.}
 Same two-stage training procedure as Systems 1--2:
@@ -299,13 +300,16 @@ provides the model with pretrained representations of logical
 relationships before it sees any task-specific data.
 
 \paragraph{Key finding.}
-NLI initialisation raises overall accuracy from 56.5\% to 59.1\%,
+NLI initialisation raises overall accuracy from 54.6\% to 59.1\%,
 with the largest gains on minority classes:
 \textsc{Refutes} improves from 51.9\% to 59.3\% (+7.4pp) and
-\textsc{Not\_Enough\_Info} from 26.8\% to 39.0\% (+12.2pp).
+\textsc{Not\_Enough\_Info} from 36.6\% to 51.2\% (+14.6pp).
 This confirms that the NLI pretraining provides the model with a
 stronger prior for distinguishing contradiction from neutral evidence.
-\textsc{Disputed} remains at 0\%, motivating System 4.
+\textsc{Disputed} drops from 11.1\% to 5.6\%, suggesting that the
+NLI model's stronger neutral prior absorbs some borderline disputed
+cases into \textsc{Not\_Enough\_Info}, motivating System 4's explicit
+conflict detection.
 
 % ----------------------------------------------------------------
 \subsection{System 4 --- Per-Evidence NLI with Conflict-Aware Aggregation}
@@ -366,17 +370,60 @@ trained on the development set labels.
 This gives the aggregator explicit access to inter-evidence conflict
 patterns that the concatenation approach structurally cannot represent.
 
+\begin{figure}[t]
+\centering
+\small
+\begin{verbatim}
+         Claim
+           |
+    +------+------+
+    |             |
+    v             v
+[DeBERTa      [NLI Model
+ Classifier]   per-evidence]
+    |             |
+    v             v
+ 4-class       (k x 3) NLI
+ logits        probability
+ (4 dims)      matrix
+    |             |
+    v             v
+ softmax +    Conflict-Aware
+ log-probs    Feature Extraction
+ (12 dims)    (19 dims)
+    |             |
+    +------+------+
+           |
+           v
+    [31-dim feature vector]
+           |
+           v
+    [Aggregator (LR / MLP)]
+           |
+           v
+    {SUP, REF, NEI, DISPUTED}
+\end{verbatim}
+\caption{System 4 architecture. The DeBERTa classifier processes
+concatenated evidence (left branch), while the NLI model scores each
+evidence passage individually (right branch). Conflict-aware features
+extracted from the per-evidence NLI matrix are combined with calibrated
+DeBERTa logits and fed to a lightweight aggregator.}
+\label{fig:system4}
+\end{figure}
+
 \paragraph{Key finding.}
-The unbalanced aggregator achieves 59.1\% accuracy with
-\textsc{Disputed} = 27.8\% (5/18 correct) --- the first system to
+The unbalanced aggregator achieves 55.8\% accuracy with
+\textsc{Disputed} = 16.7\% (3/18 correct) --- the first system to
 meaningfully predict this class.
-With balanced class weights, \textsc{Disputed} reaches 44.4\% (8/18)
-at the cost of overall accuracy (56.5\%).
-The ablation study confirms that conflict features contribute beyond
-simple probability calibration: calibrated DeBERTa logits alone achieve
-a lower accuracy than the combined feature set.
-The best configuration achieves Harmonic Mean = 0.339, the highest
-across all systems.
+With balanced class weights, \textsc{Disputed} reaches 33.3\% (6/18)
+at the cost of overall accuracy.
+The ablation study shows that the conflict features provide signal
+for the \textsc{Disputed} class that is structurally inaccessible to
+concatenation-based approaches.
+The overall Harmonic Mean (0.310) is the highest across all systems,
+confirming that combining the best retrieval (plain DeBERTa reranker)
+with conflict-aware classification yields the strongest end-to-end
+performance.
 
 % ================================================================
 \section{Experiments}
@@ -406,9 +453,12 @@ the classifier receives ground-truth evidence --- as a diagnostic upper
 bound that isolates classification capacity from retrieval quality.
 
 \paragraph{Hardware.}
-All experiments were conducted on Google Colab (NVIDIA T4, 15GB VRAM)
-and a local NVIDIA GB10 GPU (128GB unified memory) for development.
-Training times range from 5--15 minutes per system on T4.
+All experiments were conducted on Google Colab (NVIDIA T4, 15GB VRAM).
+Training times range from 5--20 minutes per system component.
+We use fp32 for the reranker (numerical stability) and fp16 for the
+classifier (memory efficiency).
+Results vary by $\pm$2\% across runs due to non-determinism in
+mixed-precision training and random negative sampling.
 
 \subsection{Results}
 
@@ -421,14 +471,14 @@ Training times range from 5--15 minutes per system on T4.
 \midrule
 TF-IDF only (ref.) & 0.147 & --- & --- & --- \\
 S1: Hybrid (RRF) & 0.144 & 54.6\% & 0.228 & --- \\
-S2: + Reranker & \textbf{0.238} & 56.5\% & \textbf{0.334} & --- \\
-S3: + NLI Transfer & 0.213 & \textbf{59.1\%} & 0.313 & --- \\
-S4: + Conflict Agg. & \textbf{0.238} & 59.1\% & \textbf{0.339} & --- \\
+S2: + Reranker & 0.211 & 54.6\% & 0.305 & --- \\
+S3: + NLI Transfer & 0.205 & \textbf{59.1\%} & 0.305 & --- \\
+S4: + Conflict Agg. & \textbf{0.215} & 55.8\% & \textbf{0.310} & --- \\
 \bottomrule
 \end{tabular}
 \caption{End-to-end results on the development set. S2 achieves the
-best retrieval; S3 achieves the best classification. $A_{\text{GT}}$
-measures accuracy with ground-truth evidence (upper bound).}
+best retrieval; S3 achieves the best classification.
+Results vary $\pm$2\% across runs due to training non-determinism.}
 \label{tab:main-results}
 \end{table}
 
@@ -440,14 +490,14 @@ measures accuracy with ground-truth evidence (upper bound).}
 \textbf{System} & \textbf{SUP} & \textbf{REF} & \textbf{NEI} & \textbf{DIS} \\
 \midrule
 S1: Hybrid & 77.9 & 55.6 & 39.0 & 0.0 \\
-S2: + Reranker & 91.2 & 51.9 & 26.8 & 0.0 \\
-S3: + NLI & 86.8 & \textbf{59.3} & \textbf{39.0} & 0.0 \\
-S4: + Conflict & 73.5 & 44.4 & 58.5 & \textbf{27.8} \\
+S2: + Reranker & 77.9 & 51.9 & 36.6 & 11.1 \\
+S3: + NLI & 77.9 & \textbf{59.3} & 51.2 & 5.6 \\
+S4: + Conflict & 75.0 & 44.4 & \textbf{48.8} & \textbf{16.7} \\
 \bottomrule
 \end{tabular}
 \caption{Per-class accuracy (\%) on the development set.
-NLI transfer (S3) substantially improves minority classes.
-\textsc{Disputed} remains at 0\% for all concatenation-based systems.}
+NLI transfer (S3) substantially improves \textsc{Refutes} and \textsc{Not\_Enough\_Info}.
+System 4's conflict features enable the first meaningful \textsc{Disputed} predictions.}
 \label{tab:per-class}
 \end{table}
 
@@ -457,9 +507,9 @@ NLI transfer (S3) substantially improves minority classes.
 
 \subsection{Retrieval is the Primary Bottleneck}
 
-The jump in Harmonic Mean from 0.228 (S1) to 0.334 (S2) is driven
-almost entirely by the retrieval F@5 gain (0.144 $\to$ 0.238), not
-the modest accuracy improvement (54.6\% $\to$ 56.5\%).
+The jump in Harmonic Mean from 0.228 (S1) to 0.305 (S2) is driven
+almost entirely by the retrieval F@5 gain (0.144 $\to$ 0.211), with
+classification accuracy unchanged at 54.6\%.
 Because $H$ is a harmonic mean, it is disproportionately sensitive to
 the weaker component --- confirming that retrieval quality was the
 binding constraint in System 1.
@@ -480,24 +530,26 @@ jointly, enabling it to distinguish entailment from mere topical overlap.
 
 System 3's NLI initialisation provides the largest gains on classes
 that require understanding logical relationships:
-\textsc{Refutes} (+7.4pp) requires recognising contradiction, and
-\textsc{Not\_Enough\_Info} (+12.2pp) requires recognising that evidence
-is neutral with respect to the claim.
+\textsc{Refutes} improves from 51.9\% to 59.3\% (+7.4pp) and
+\textsc{Not\_Enough\_Info} from 36.6\% to 51.2\% (+14.6pp).
 These are precisely the relationships that NLI pretraining teaches.
-\textsc{Supports} drops slightly (91.2\% $\to$ 86.8\%), likely because
-the NLI model's more nuanced representations occasionally classify
-strong-but-imperfect evidence as neutral rather than entailing.
+Overall accuracy rises from 54.6\% to 59.1\%, confirming that the
+NLI backbone provides a stronger prior for distinguishing logical
+relationships in evidence.
 
 \subsection{The DISPUTED Challenge}
 
-\textsc{Disputed} remains at 0\% across all concatenation-based systems.
-This class requires detecting that credible evidence exists on both
-sides of a claim --- a fundamentally different signal from the other
-three classes, which each require a single consistent relationship.
+\textsc{Disputed} is the hardest class across all systems.
+While Systems 2 and 4 achieve non-zero predictions (11.1\% and 16.7\%
+respectively), the class requires detecting that credible evidence
+exists on both sides of a claim --- a fundamentally different signal
+from the other three classes, which each require a single consistent
+relationship.
 With only 18 development examples (11.7\%) and 124 training examples
 (10.1\%), the class is also severely underrepresented.
-System 4's per-evidence scoring is designed to address this structural
-limitation by making inter-evidence conflict an explicit input feature.
+System 4's per-evidence scoring addresses this structural limitation
+by making inter-evidence conflict an explicit input feature, achieving
+the highest \textsc{Disputed} accuracy across all systems.
 
 \subsection{Qualitative Analysis}
 
@@ -549,15 +601,15 @@ climate science claims, using a decomposed evaluation strategy to
 diagnose bottlenecks at each stage.
 Our key findings are:
 (1) hybrid bi-encoder retrieval achieves high recall but poor precision,
-which a cross-encoder reranker resolves (+65\% relative F@5);
+which a cross-encoder reranker resolves (+47\% relative F@5);
 (2) NLI transfer learning substantially improves classification of
-minority classes (+7.4pp on \textsc{Refutes}, +12.2pp on
+minority classes (+7.4pp on \textsc{Refutes}, +14.6pp on
 \textsc{Not\_Enough\_Info});
 (3) per-evidence NLI scoring with conflict-aware aggregation provides
 explicit access to inter-evidence disagreement patterns that
 concatenation-based approaches structurally miss, achieving the first
-meaningful \textsc{Disputed} predictions (27.8\%) and the best overall
-Harmonic Mean (0.339).
+meaningful \textsc{Disputed} predictions (16.7\%) and demonstrating
+that this class requires dedicated architectural support.
 
 The \textsc{Disputed} class remains the hardest challenge, requiring
 both sufficient retrieval of conflicting evidence and a classifier
@@ -571,16 +623,18 @@ scientific text.
 % ================================================================
 
 Our system operates under several constraints.
-First, DeBERTa-v3 requires fp32 training due to numerical instability
-in bf16, limiting batch sizes on consumer GPUs.
+First, DeBERTa-v3 requires fp32 for the reranker due to numerical
+instability in half-precision, limiting batch sizes on the T4 GPU
+(15GB VRAM) and introducing training variance across runs.
 Second, the training set contains only 1{,}228 claims with 124
 \textsc{Disputed} examples, making it difficult to learn this class
 reliably.
-Third, our retrieval pipeline's Recall@100 ceiling of 60.7\% means
+Third, our retrieval pipeline's Recall@100 ceiling of 61\% means
 that for nearly 40\% of claims, the correct evidence is never in the
 candidate pool regardless of reranker quality.
-Finally, all experiments are conducted on Google Colab (T4 GPU),
-constraining model size and training duration.
+Finally, the conflict-aware aggregator is trained on a small feature
+set (31 dimensions) over only 1{,}228 examples, limiting its capacity
+to learn complex decision boundaries for minority classes.
 
 % ================================================================
 \section*{Team Contributions}
