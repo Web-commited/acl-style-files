@@ -14,6 +14,8 @@
 \usepackage{multirow}
 \usepackage{amsmath}
 \usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes.geometric}
 
 % Placeholder command — bright orange so it is impossible to miss
 \newcommand{\placeholder}[1]{\textcolor{orange}{\textbf{[PLACEHOLDER: #1]}}}
@@ -372,42 +374,54 @@ patterns that the concatenation approach structurally cannot represent.
 
 \begin{figure}[t]
 \centering
-\small
-\begin{verbatim}
-         Claim
-           |
-    +------+------+
-    |             |
-    v             v
-[DeBERTa      [NLI Model
- Classifier]   per-evidence]
-    |             |
-    v             v
- 4-class       (k x 3) NLI
- logits        probability
- (4 dims)      matrix
-    |             |
-    v             v
- softmax +    Conflict-Aware
- log-probs    Feature Extraction
- (12 dims)    (19 dims)
-    |             |
-    +------+------+
-           |
-           v
-    [31-dim feature vector]
-           |
-           v
-    [Aggregator (LR / MLP)]
-           |
-           v
-    {SUP, REF, NEI, DISPUTED}
-\end{verbatim}
+\begin{tikzpicture}[
+    node distance=0.6cm and 1.2cm,
+    box/.style={draw, rounded corners, minimum width=2.2cm, minimum height=0.6cm, align=center, font=\scriptsize},
+    data/.style={draw, rounded corners, minimum width=1.8cm, minimum height=0.5cm, align=center, font=\scriptsize, fill=gray!10},
+    arr/.style={-{Stealth[length=2mm]}, thick},
+]
+% Top
+\node[data] (claim) {Claim + Evidence$_{1..k}$};
+
+% Two branches
+\node[box, below left=0.7cm and 0.6cm of claim] (deberta) {DeBERTa\\Classifier};
+\node[box, below right=0.7cm and 0.6cm of claim] (nli) {NLI Model\\(per-evidence)};
+
+% Outputs of branches
+\node[data, below=0.5cm of deberta] (logits) {Logits + Probs\\(12 dims)};
+\node[data, below=0.5cm of nli] (matrix) {NLI Matrix\\$(k \times 3)$};
+
+% Feature extraction
+\node[box, below=0.5cm of matrix] (extract) {Conflict Feature\\Extraction};
+\node[data, below=0.5cm of extract] (feats) {Conflict Features\\(19 dims)};
+
+% Merge
+\node[data, below=1.0cm of logits, xshift=1.2cm] (combined) {Combined\\(31 dims)};
+
+% Aggregator
+\node[box, below=0.5cm of combined, fill=blue!10] (agg) {Aggregator\\(LR / MLP)};
+
+% Output
+\node[data, below=0.5cm of agg, fill=green!10] (output) {\textsc{Sup} / \textsc{Ref} / \textsc{NEI} / \textsc{Dis}};
+
+% Arrows
+\draw[arr] (claim.south) -- ++(0,-0.2) -| (deberta.north);
+\draw[arr] (claim.south) -- ++(0,-0.2) -| (nli.north);
+\draw[arr] (deberta) -- (logits);
+\draw[arr] (nli) -- (matrix);
+\draw[arr] (matrix) -- (extract);
+\draw[arr] (extract) -- (feats);
+\draw[arr] (logits.south) |- (combined.west);
+\draw[arr] (feats.south) |- (combined.east);
+\draw[arr] (combined) -- (agg);
+\draw[arr] (agg) -- (output);
+
+\end{tikzpicture}
 \caption{System 4 architecture. The DeBERTa classifier processes
-concatenated evidence (left branch), while the NLI model scores each
-evidence passage individually (right branch). Conflict-aware features
-extracted from the per-evidence NLI matrix are combined with calibrated
-DeBERTa logits and fed to a lightweight aggregator.}
+concatenated evidence (left), while the NLI model scores each evidence
+passage individually (right). Conflict-aware features are combined with
+calibrated DeBERTa logits and fed to a lightweight aggregator that can
+explicitly detect inter-evidence disagreement.}
 \label{fig:system4}
 \end{figure}
 
