@@ -414,6 +414,32 @@ explicit class balancing --- a limitation we discuss in the Analysis.
 
 \subsection{Setup}
 
+\paragraph{Implementation summary.}
+Table~\ref{tab:hyperparams} consolidates the key training
+configurations across all system components.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+& \textbf{Reranker} & \textbf{NLI Clf.} & \textbf{Conflict} & \textbf{E2E} \\
+\midrule
+Base model & DeBERTa-v3 & NLI-DeBERTa & sklearn MLP & DeBERTa-v3 \\
+Epochs & 3 & 10+5 & --- & 10+5 \\
+Learning rate & 2e-5 & 2e-5 / 5e-6 & --- & 2e-5 / 5e-6 \\
+Batch size & 32 & 16 & --- & 2 (acc.\ 8) \\
+Max length & 256 & 512 & --- & 192 \\
+Precision & fp32 & fp16 & --- & fp16 \\
+\bottomrule
+\end{tabular}
+\caption{Training configurations for each system component.
+The NLI classifier and E2E verifier use a two-stage schedule
+(gold evidence then retrieved evidence), reflected in the
+split epoch and learning rate values.}
+\label{tab:hyperparams}
+\end{table}
+
 \paragraph{Dataset.}
 1{,}228 training claims, 154 development claims, and 1{,}208{,}827
 evidence passages.
