@@ -256,10 +256,10 @@ stays at or near 0\%.
 Recent work has shown that reasoning over evidence \emph{sets} rather
 than concatenated strings helps verification quality
 \citep{shang-etal-2024-rafts, kapadia-etal-2025-minimal}.
-Our main idea is as follows: inter-evidence conflict, which is when some
-passages entail the claim while others contradict, it should as a result, be a
-direct input to the classifier, not something the model has to discover
-on its own from the token sequence.
+Our main idea is that inter-evidence conflict, which occurs when some
+passages entail the claim while others contradict it, should be a
+direct input to the classifier rather than something the model has to
+discover on its own from the token sequence.
 
 \paragraph{Per-evidence NLI scoring.}
 Instead of concatenating all top-5 passages together, we score each
@@ -555,8 +555,7 @@ see what each design choice actually affects.
 \paragraph{Hardware.}
 Google Colab with NVIDIA T4 (15GB VRAM).
 Training takes 5--20 minutes per component.
-We use fp32 for the reranker (needed for numerical stability) and fp16
-for the classifier (to save memory).
+We use fp16 for all components to save memory.
 Results vary by about $\pm$2\% across runs because of non-determinism
 in mixed-precision training and random negative sampling.
 
@@ -676,7 +675,7 @@ The drop in \textsc{Disputed} (11.1\% $\to$ 5.6\%) under NLI transfer
 shows an interesting failure: the model's stronger sense of ``neutral''
 makes it label conflicting evidence as ``not enough info'' instead of
 ``disputed.''
-Which entails that \textsc{Disputed} needs more explicit conflict detection.
+This suggests that \textsc{Disputed} needs more explicit conflict detection.
 
 \subsection{Reranking: From Topical to Logical Relevance}
 
@@ -730,9 +729,9 @@ the claim is about and what it is actually asking.
 We built a fact-checking system for climate science claims, exploring
 how per-evidence reasoning compares to standard concatenation-based
 classification.
-Our main observation is that per-evidence reasoning --- whether through
+Our main observation is that per-evidence reasoning, whether through
 post-hoc conflict features (System 4) or end-to-end learned gating
-(System 5) --- improves classification over concatenation (best
+(System 5), improves classification over concatenation (best
 Harmonic Mean 0.334).
 System 5's end-to-end evidence-aware verifier achieves the best
 Harmonic Mean by combining reranked retrieval with learned
@@ -761,9 +760,9 @@ both sides of a claim.
 % ================================================================
 
 Our system has several constraints.
-First, the T4 GPU (15GB VRAM) limits batch sizes --- particularly for
-System 5, which encodes 5 (claim, evidence) pairs per example ---
-and non-determinism in mixed-precision training causes about $\pm$2\%
+First, the T4 GPU (15GB VRAM) limits batch sizes, particularly for
+System 5 which encodes 5 (claim, evidence) pairs per example, and
+non-determinism in mixed-precision training causes about $\pm$2\%
 variance between runs.
 Second, the training set has only 124 \textsc{Disputed} examples
 (10.1\%), making it hard to learn good decision boundaries for this
