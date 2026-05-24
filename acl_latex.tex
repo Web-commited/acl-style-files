@@ -771,7 +771,7 @@ Third, our Recall@100 ceiling of 61\% means that for almost 40\% of
 claims, the correct evidence never enters the candidate pool no matter
 how good the reranker is.
 Fourth, the conflict-aware aggregator works with a 31-dimensional
-feature space over just 1{,}228 training examples --- a setting where
+feature space over just 1{,}228 training examples, which is a setting where
 overfitting is a real risk even with L2 regularisation.
 Finally, we can only use the provided dataset and cannot add external
 fact-checking data, which limits the variety of conflict patterns the
@@ -780,7 +780,14 @@ system can learn from.
 % ================================================================
 \section*{Team Contributions}
 % ================================================================
-
+Linxuan Han:
+\begin{itemize}
+\setlength\itemsep{0em}
+\setlength\parskip{0em}
+\item Developed System 5 from System 4 by redesigning the conflict-aware aggregation approach into an end-to-end evidence-aware verifier.
+\item Implemented per-evidence encoding, learned attention gating, per-evidence role prediction, structured conflict features, and the final classification module. Ran the System 5 experiments, including two-stage training, development-set evaluation, and comparison with System 4.
+\item Contributed to the report writing, especially the System 5 method description, results, and analysis.
+\end{itemize}
 \placeholder{%
   Fill in before submission. Example format:
   [Author 1]: Retrieval pipeline (hybrid retriever, cross-encoder
