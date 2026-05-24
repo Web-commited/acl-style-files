@@ -37,28 +37,28 @@ Per-Evidence Reasoning for Climate Science Claims}
 
 Automated fact-checking requires retrieving relevant evidence from a
 large corpus and classifying claims based on that evidence.
-A hard challenge in this task is the \textsc{Disputed} class, which
-requires detecting that credible evidence exists on \emph{both sides}
-of a claim --- a signal that standard concatenation-based classifiers
-cannot capture.
+A recurring difficulty in this task is the \textsc{Disputed} class,
+which requires detecting that credible evidence exists on \emph{both
+sides} of a claim --- a signal that standard concatenation-based
+classifiers struggle to capture.
 We build a system for verifying climate science claims against a corpus
-of 1.2 million passages and propose three techniques:
+of 1.2 million passages and explore three directions:
 (1)~a \textbf{conflict-aware aggregation} method that scores each
 evidence passage independently using Natural Language Inference (NLI),
 extracts features about inter-evidence conflict, and feeds them to a
-lightweight classifier --- this achieves the first meaningful
-\textsc{Disputed} predictions (16.7\%, up from 0\% in
-concatenation-based systems);
+lightweight classifier --- this produces non-trivial \textsc{Disputed}
+predictions (16.7\%, up from 0\% in concatenation-based systems);
 (2)~\textbf{NLI transfer learning} for classification, which improves
-minority-class accuracy by up to 14.6 percentage points by giving the
+minority-class accuracy by 7--15 percentage points by giving the
 classifier pretrained knowledge of entailment and contradiction;
-(3)~a \textbf{hard-negative cross-encoder reranker} that tells apart
+(3)~a \textbf{hard-negative cross-encoder reranker} that distinguishes
 logically relevant evidence from topically similar passages, improving
-evidence precision by 47\% over hybrid bi-encoder retrieval.
-Our best system achieves a Harmonic Mean of 0.310 on the development
-set, with the conflict-aware approach showing that \textsc{Disputed}
-detection needs dedicated architectural support beyond standard
-sequence classification.
+evidence F@5 from 0.144 to 0.211.
+Our best system achieves a Harmonic Mean of 0.334 on the development
+set.
+Overall performance remains moderate, but the conflict-aware approach
+shows that \textsc{Disputed} detection benefits from dedicated
+architectural support beyond standard sequence classification.
 
 \end{abstract}
 
@@ -84,25 +84,25 @@ The \textsc{Disputed} label is exactly the case where this fails,
 because it requires detecting that credible evidence exists on both
 sides, not just finding one consistent relationship.
 
-We address this with four contributions:
+We address this with four design choices:
 \begin{itemize}
   \item We show that a \textbf{cross-encoder reranker} trained on
-        hard negatives from the coarse retrieval pool fixes the
-        precision problem in hybrid bi-encoder retrieval (+47\%
-        relative F@5), confirming that the real challenge is ranking,
+        hard negatives from the coarse retrieval pool improves the
+        precision problem in hybrid bi-encoder retrieval (F@5: 0.144
+        $\to$ 0.211), confirming that the bottleneck is ranking,
         not recall.
-  \item We show that \textbf{NLI transfer learning} gives strong
+  \item We show that \textbf{NLI transfer learning} provides useful
         inductive bias for fact-verification, improving
         \textsc{Refutes} by 7.4 and \textsc{Not\_Enough\_Info} by 14.6
         percentage points through pretrained entailment representations.
   \item We propose \textbf{conflict-aware feature aggregation} using
-        per-evidence NLI scoring, achieving the first meaningful
+        per-evidence NLI scoring, producing non-trivial
         \textsc{Disputed} predictions (16.7\%) where all
         concatenation-based systems get 0\%.
   \item We develop an \textbf{end-to-end evidence-aware verifier} with
         learned attention gating and per-evidence role prediction,
-        achieving the best Harmonic Mean (0.334) and the strongest
-        \textsc{Not\_Enough\_Info} performance (58.5\%).
+        achieving our best Harmonic Mean (0.334) and the best
+        \textsc{Not\_Enough\_Info} accuracy (58.5\%).
 \end{itemize}
 
 We develop these techniques across five system variants,
@@ -183,9 +183,10 @@ over 2 steps (effective batch 32), lr = 2e-5, max\_length = 256, fp16.
 At inference, we score all 100 candidates and pick the top-5.
 
 \paragraph{Result.}
-The reranker raises F@5 from 0.144 to 0.211 (+47\% relative) while
-Recall@100 stays the same, confirming that the gain comes entirely
-from better ranking within the existing pool.
+The reranker raises F@5 from 0.144 to 0.211 while
+Recall@100 stays the same, indicating that the gain comes from
+better ranking within the existing pool rather than finding new
+candidates.
 
 % ----------------------------------------------------------------
 \subsection{NLI Transfer for Classification}
@@ -229,11 +230,11 @@ and inference (imperfect retrieved evidence).
 
 \paragraph{Result.}
 NLI initialisation raises accuracy from 54.6\% to 59.1\%, with the
-biggest gains on minority classes: \textsc{Refutes} +7.4pp (51.9\%
-$\to$ 59.3\%) and \textsc{Not\_Enough\_Info} +14.6pp (36.6\% $\to$
-51.2\%).
-This shows that NLI pretraining gives the model a better starting
-point for telling apart contradiction and neutral evidence.
+gains concentrated on minority classes: \textsc{Refutes} +7.4pp
+(51.9\% $\to$ 59.3\%) and \textsc{Not\_Enough\_Info} +14.6pp (36.6\%
+$\to$ 51.2\%).
+This suggests that NLI pretraining gives the model a better starting
+point for distinguishing contradiction from neutral evidence.
 However, \textsc{Disputed} drops from 11.1\% to 5.6\%: the NLI
 model's stronger sense of ``neutral'' causes it to absorb some
 borderline disputed cases into \textsc{Not\_Enough\_Info}.
@@ -454,13 +455,13 @@ T4's 15GB VRAM remains the binding constraint.
 
 \paragraph{Result.}
 System 5 achieves 59.1\% accuracy and a Harmonic Mean of 0.334 ---
-the best overall score across all systems.
-The largest gain is on \textsc{Not\_Enough\_Info} (58.5\%, up from
-36.6\% in System 2 and 51.2\% in System 3), confirming that
-per-evidence encoding helps the model recognise when \emph{none} of
-the retrieved passages individually entails the claim.
+the best among our systems, though still moderate in absolute terms.
+The most notable per-class change is on \textsc{Not\_Enough\_Info}
+(58.5\%, up from 36.6\% in System 2 and 51.2\% in System 3),
+suggesting that per-evidence encoding helps the model recognise when
+\emph{none} of the retrieved passages individually entails the claim.
 \textsc{Refutes} returns to 55.6\% (matching System 2), and
-\textsc{Supports} stays strong at 76.5\%.
+\textsc{Supports} remains at 76.5\%.
 
 However, \textsc{Disputed} remains at 0\%.
 The cross-entropy loss with uniform class weights does not incentivise
@@ -469,7 +470,7 @@ We experimented with class-weighted loss, which raised
 \textsc{Disputed} to 28\% but dropped the Harmonic Mean to 0.23
 because the model over-predicted \textsc{Disputed} at the expense of
 majority classes.
-This confirms System 4's finding from a different angle: detecting
+This echoes System 4's finding from a different angle: detecting
 inter-evidence conflict requires either explicit feature engineering
 (System 4's approach) or a loss function specifically designed for
 rare classes --- standard cross-entropy with end-to-end training is
@@ -588,9 +589,7 @@ Hybrid bi-encoder (baseline) & 0.144 & 54.6\% & 0.228 \\
 \caption{End-to-end results on the development set. Systems are
 presented in development order: Systems 2--3 share coarse hybrid
 retrieval (no reranker), while Systems 4--5 add cross-encoder
-reranking. The end-to-end verifier achieves the best Harmonic Mean
-by combining strong retrieval with per-evidence encoding.
-Results vary $\pm$2\% across runs.}
+reranking. Results vary $\pm$2\% across runs.}
 \label{tab:main-results}
 \end{table}
 
@@ -678,10 +677,10 @@ systems line up well:
 \emph{entailment} $\approx$ \textsc{Supports},
 \emph{contradiction} $\approx$ \textsc{Refutes},
 \emph{neutral} $\approx$ \textsc{Not\_Enough\_Info}.
-The +14.6pp gain on \textsc{Not\_Enough\_Info} stands out: this class
+The +14.6pp gain on \textsc{Not\_Enough\_Info} is notable: this class
 needs the model to recognise that evidence is topically related but
-does not actually say enough to verify the claim --- exactly the
-``neutral'' relationship that NLI training teaches.
+does not actually say enough to verify the claim --- a relationship
+similar to the ``neutral'' category that NLI training covers.
 
 The drop in \textsc{Disputed} (11.1\% $\to$ 5.6\%) under NLI transfer
 shows an interesting failure: the model's stronger sense of ``neutral''
@@ -692,8 +691,9 @@ This tells us that \textsc{Disputed} needs architectural support
 
 \subsection{Reranking: From Topical to Logical Relevance}
 
-The 47\% relative gain in F@5 from the cross-encoder shows a clear
-point: bi-encoders capture \emph{what} a passage is about, while
+The improvement in F@5 from the cross-encoder (0.144 $\to$ 0.211)
+illustrates the difference between topical and logical relevance:
+bi-encoders capture \emph{what} a passage is about, while
 cross-encoders capture \emph{how} it relates to the claim.
 The hard-negative strategy matters here --- if we used random negatives,
 the reranker would just learn to tell climate passages from non-climate
@@ -741,28 +741,31 @@ the claim is \emph{about} and what it is \emph{actually asking}.
 \section{Conclusion}
 % ================================================================
 
-We built a fact-checking system for climate science claims with four
-main technical contributions.
-Our primary finding is that per-evidence reasoning --- whether through
+We built a fact-checking system for climate science claims, exploring
+how per-evidence reasoning compares to standard concatenation-based
+classification.
+Our main observation is that per-evidence reasoning --- whether through
 post-hoc conflict features (System 4) or end-to-end learned gating
-(System 5) --- substantially improves classification over concatenation.
+(System 5) --- improves classification over concatenation, though
+overall performance remains moderate (best Harmonic Mean 0.334).
 System 5's end-to-end evidence-aware verifier achieves the best
-Harmonic Mean (0.334) by combining strong retrieval with learned
-per-evidence attention, and achieves 58.5\% on \textsc{Not\_Enough\_Info}
+Harmonic Mean by combining reranked retrieval with learned
+per-evidence attention, and reaches 58.5\% on \textsc{Not\_Enough\_Info}
 (+22pp over the reranker baseline) by recognising when no individual
 passage entails the claim.
 System 4's conflict-aware aggregation is the only approach that
-predicts \textsc{Disputed} (16.7\%), showing that explicit conflict
-features carry signal that end-to-end training alone does not surface
-without class balancing.
-NLI transfer learning gives strong inductive bias for minority classes
-(+14.6pp on \textsc{Not\_Enough\_Info}, +7.4pp on \textsc{Refutes}).
-Hard-negative cross-encoder reranking fixes the precision problem in
-bi-encoder retrieval (+47\% relative F@5).
+predicts \textsc{Disputed} at all (16.7\%), suggesting that explicit
+conflict features carry signal that end-to-end training does not
+surface without class balancing.
+NLI transfer learning provides useful inductive bias for minority
+classes (+14.6pp on \textsc{Not\_Enough\_Info}, +7.4pp on
+\textsc{Refutes}).
+Cross-encoder reranking improves retrieval F@5 from 0.144 to 0.211
+by learning to distinguish logical relevance from topical similarity.
 
-\textsc{Disputed} remains hard: with only 18 development examples and
-a Recall@100 ceiling of 61\%, both data scarcity and retrieval coverage
-limit what we can achieve.
+\textsc{Disputed} remains largely unsolved: with only 18 development
+examples and a Recall@100 ceiling of 61\%, both data scarcity and
+retrieval coverage limit what we can achieve.
 Future work could add class-weighted loss to System 5's end-to-end
 training, and explore multi-hop retrieval to actively find evidence on
 both sides of a claim.
