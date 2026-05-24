@@ -56,9 +56,9 @@ logically relevant evidence from topically similar passages, improving
 evidence F@5 from 0.144 to 0.211.
 Our best system achieves a Harmonic Mean of 0.334 on the development
 set.
-Overall performance remains moderate, but the conflict-aware approach
-shows that \textsc{Disputed} detection benefits from dedicated
-architectural support beyond standard sequence classification.
+The conflict-aware approach shows that \textsc{Disputed} detection
+benefits from dedicated architectural support beyond standard sequence
+classification.
 
 \end{abstract}
 
@@ -455,7 +455,7 @@ T4's 15GB VRAM remains the binding constraint.
 
 \paragraph{Result.}
 System 5 achieves 59.1\% accuracy and a Harmonic Mean of 0.334 ---
-the best among our systems, though still moderate in absolute terms.
+the best among our systems.
 The most notable per-class change is on \textsc{Not\_Enough\_Info}
 (58.5\%, up from 36.6\% in System 2 and 51.2\% in System 3),
 suggesting that per-evidence encoding helps the model recognise when
@@ -746,8 +746,8 @@ how per-evidence reasoning compares to standard concatenation-based
 classification.
 Our main observation is that per-evidence reasoning --- whether through
 post-hoc conflict features (System 4) or end-to-end learned gating
-(System 5) --- improves classification over concatenation, though
-overall performance remains moderate (best Harmonic Mean 0.334).
+(System 5) --- improves classification over concatenation (best
+Harmonic Mean 0.334).
 System 5's end-to-end evidence-aware verifier achieves the best
 Harmonic Mean by combining reranked retrieval with learned
 per-evidence attention, and reaches 58.5\% on \textsc{Not\_Enough\_Info}
