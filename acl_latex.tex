@@ -178,8 +178,8 @@ These are hard negatives because they are topically related to the
 claim (they passed the bi-encoder filter) but are not actual evidence.
 This pushes the reranker to learn logical relevance, not just topical
 filtering --- the bi-encoders already handle that part.
-Training details: 3 epochs, batch size = 32, lr = 2e-5,
-max\_length = 256, fp32.
+Training details: 3 epochs, batch size = 16 with gradient accumulation
+over 2 steps (effective batch 32), lr = 2e-5, max\_length = 256, fp16.
 At inference, we score all 100 candidates and pick the top-5.
 
 \paragraph{Result.}
@@ -346,10 +346,14 @@ it direct access to inter-evidence disagreement patterns.}
 \end{figure}
 
 \paragraph{Result.}
-The conflict-aware aggregator gets \textsc{Disputed} = 16.7\% (3/18
-correct) --- the first system to predict this class in a meaningful way.
-With balanced class weights, \textsc{Disputed} reaches 33.3\% (6/18)
-but overall accuracy drops from 55.8\% to 51.3\%.
+We evaluated three aggregator variants: logistic regression (unbalanced
+and balanced) and an MLP (64--32 hidden units, ReLU, L2 $\alpha = 0.01$).
+The MLP achieves the best harmonic mean and gets
+\textsc{Disputed} = 16.7\% (3/18 correct) --- the first system to
+predict this class in a meaningful way.
+With balanced class weights (logistic regression variant),
+\textsc{Disputed} reaches 33.3\% (6/18) but overall accuracy drops
+from 55.8\% to 51.3\%.
 Ablation shows that removing the conflict features while keeping the
 DeBERTa logits brings \textsc{Disputed} back to near 0\%, confirming
 that these features carry signal that concatenation-based approaches
@@ -364,49 +368,147 @@ simply cannot access.
 System 4 demonstrated that per-evidence reasoning improves
 \textsc{Disputed} detection, but its two-branch design has a
 fundamental limitation: the DeBERTa classifier and the NLI scorer
-are trained independently, and only a lightweight sklearn model
+are trained independently, and only a lightweight sklearn MLP
 connects them.
 Gradients cannot flow from the final prediction back through the
 evidence encoder, so the encoder never learns to produce
 representations optimised for conflict detection.
+We ask: can a single model learn per-evidence reasoning end-to-end,
+without relying on a frozen NLI model or hand-crafted features?
 
 \paragraph{Architecture.}
 We replace the two-branch post-hoc aggregation with a single
-end-to-end model.
-Given a claim and $k$ retrieved evidence passages, the model:
+end-to-end model (Figure~\ref{fig:system5}).
+Given a claim and $k{=}5$ retrieved evidence passages, the model
+proceeds in five stages:
+
 \begin{enumerate}
-  \item Encodes each (claim, evidence$_i$) pair independently through
-        a shared DeBERTa encoder with gradient checkpointing, producing
-        $k$ CLS representations.
-  \item Applies a \textbf{learned attention gate} over the $k$
-        representations, allowing the model to downweight irrelevant
-        evidence automatically.
-  \item Predicts a \textbf{per-evidence role} (support/refute/neutral)
-        via a 3-class head, analogous to System 4's NLI scoring but
-        trained jointly with the final objective.
-  \item Computes \textbf{structured conflict features} from the gated
-        role predictions: max support, max refute, conflict strength
-        ($\min(\max_{\text{sup}}, \max_{\text{ref}})$), and
-        support--refute gap.
-  \item Concatenates the attention-pooled representation with the
-        structured features and classifies via a two-layer MLP.
+  \item \textbf{Per-evidence encoding.}
+        Each (claim, evidence$_i$) pair is encoded independently
+        through a shared \texttt{nli-deberta-v3-base} encoder with
+        gradient checkpointing enabled, producing $k$ CLS
+        representations $\mathbf{h}_1, \ldots, \mathbf{h}_k \in
+        \mathbb{R}^{768}$.
+        A validity mask zeros out padded slots when fewer than $k$
+        evidence passages are available.
+
+  \item \textbf{Learned attention gating.}
+        A two-layer gate network scores each representation:
+        \begin{equation}
+          \alpha_i = \frac{\exp(g(\mathbf{h}_i))}
+                         {\sum_{j=1}^{k} \exp(g(\mathbf{h}_j))},
+          \quad g = W_2 \tanh(W_1 \mathbf{h}_i)
+        \end{equation}
+        where invalid positions are masked to $-\infty$ before softmax.
+        The pooled representation is
+        $\bar{\mathbf{h}} = \sum_i \alpha_i \mathbf{h}_i$.
+        This lets the model downweight irrelevant or empty evidence
+        slots automatically.
+
+  \item \textbf{Per-evidence role prediction.}
+        A linear head predicts a 3-class role distribution
+        (support/refute/neutral) for each passage:
+        $\mathbf{r}_i = \text{softmax}(W_r \mathbf{h}_i)$.
+        This is analogous to System 4's NLI scoring, but trained
+        jointly with the final classification objective rather than
+        frozen.
+
+  \item \textbf{Structured conflict features.}
+        From the gated role predictions, we compute 7 scalar features:
+        \begin{itemize}
+          \item Top weighted support, refute, and neutral scores
+          \item Summed support and refute mass across all passages
+          \item \textbf{Conflict strength}:
+                $\min(\max_i(\alpha_i \cdot r_i^{\text{sup}}),\;
+                       \max_i(\alpha_i \cdot r_i^{\text{ref}}))$
+          \item Active evidence count minus support--refute gap
+        \end{itemize}
+        The conflict strength feature is high exactly when the model
+        attends to both supporting and refuting passages --- the
+        signal needed for \textsc{Disputed}.
+
+  \item \textbf{Classification.}
+        The pooled representation $\bar{\mathbf{h}}$ is concatenated
+        with the 7 structured features and passed through a two-layer
+        MLP (768$\to$768, LayerNorm, GELU, dropout 0.1, 768$\to$4)
+        to produce the final 4-class prediction.
 \end{enumerate}
-The entire model is trained end-to-end with cross-entropy loss,
-using the same two-stage procedure (gold evidence, then retrieved).
-Training uses batch size 2 with gradient accumulation (effective
-batch 8) and max sequence length 192 to fit within T4 memory.
+
+\paragraph{Training procedure.}
+We use the same two-stage schedule as System 3:
+\begin{itemize}
+  \item \textbf{Stage 1} (6 epochs, lr = 2e-5): train on ground-truth
+        evidence so the encoder and role head learn clean
+        claim--evidence relationships.
+  \item \textbf{Stage 2} (3 epochs, lr = 5e-6): fine-tune on retrieved
+        evidence from the V4 reranker, adapting to the noise the model
+        will see at inference.
+\end{itemize}
+Both stages use AdamW with linear warmup (10\%) and linear decay,
+batch size 2 with gradient accumulation over 4 steps (effective
+batch 8), max sequence length 192, and gradient clipping at 1.0.
+The reduced sequence length (192 vs.\ 512 in System 3) is necessary
+because encoding $k{=}5$ pairs per claim multiplies memory usage
+by 5$\times$; gradient checkpointing recovers some of this but the
+T4's 15GB VRAM remains the binding constraint.
 
 \paragraph{Result.}
-System 5 achieves 59.1\% accuracy --- matching System 3's NLI transfer
-result but through a purely architectural mechanism rather than
-pretraining.
+System 5 achieves 59.1\% accuracy and a Harmonic Mean of 0.334 ---
+the best overall score across all systems.
 The largest gain is on \textsc{Not\_Enough\_Info} (58.5\%, up from
-36.6\% in System 2), confirming that per-evidence encoding helps the
-model recognise when \emph{none} of the retrieved passages individually
-entails the claim.
-\textsc{Disputed} remains at 0\%, indicating that the cross-entropy
-loss alone does not incentivise learning this minority class without
-explicit class balancing --- a limitation we discuss in the Analysis.
+36.6\% in System 2 and 51.2\% in System 3), confirming that
+per-evidence encoding helps the model recognise when \emph{none} of
+the retrieved passages individually entails the claim.
+\textsc{Refutes} returns to 55.6\% (matching System 2), and
+\textsc{Supports} stays strong at 76.5\%.
+
+However, \textsc{Disputed} remains at 0\%.
+The cross-entropy loss with uniform class weights does not incentivise
+learning this minority class (only 18 dev examples).
+We experimented with class-weighted loss, which raised
+\textsc{Disputed} to 28\% but dropped the Harmonic Mean to 0.23
+because the model over-predicted \textsc{Disputed} at the expense of
+majority classes.
+This confirms System 4's finding from a different angle: detecting
+inter-evidence conflict requires either explicit feature engineering
+(System 4's approach) or a loss function specifically designed for
+rare classes --- standard cross-entropy with end-to-end training is
+not sufficient.
+
+\begin{figure}[t]
+\centering
+\small
+\begin{verbatim}
+     Claim + Evidence_1  ...  Claim + Evidence_k
+              |                       |
+     [Shared DeBERTa Encoder (grad ckpt)]
+              |                       |
+           h_1          ...        h_k
+              |                       |
+     +--------+--------+    +---------+
+     |                 |    |         |
+  [Attention Gate]  [Role Head]      |
+     |                 |             |
+  gate weights      role probs       |
+     |                 |             |
+  Pooled repr    Structured Features |
+  (768-dim)      (7-dim: conflict,   |
+     |            support, refute)   |
+     +--------+--------+            |
+              |                      |
+     [Concat: 768 + 7 = 775]        |
+              |                      |
+     [MLP: 775 -> 768 -> 4]         |
+              |                      |
+     {SUP, REF, NEI, DISPUTED}
+\end{verbatim}
+\caption{System 5 architecture. Each (claim, evidence) pair is encoded
+independently, then aggregated via learned attention gating. A role
+head predicts per-evidence stance, from which structured conflict
+features are computed and concatenated with the pooled representation
+for final classification. All components are trained end-to-end.}
+\label{fig:system5}
+\end{figure}
 
 % ================================================================
 \section{Experiments}
@@ -425,18 +527,21 @@ configurations across all system components.
 \toprule
 & \textbf{Reranker} & \textbf{NLI Clf.} & \textbf{Conflict} & \textbf{E2E} \\
 \midrule
-Base model & DeBERTa-v3 & NLI-DeBERTa & sklearn MLP & DeBERTa-v3 \\
-Epochs & 3 & 10+5 & --- & 10+5 \\
+Base model & DeBERTa-v3 & NLI-DeBERTa & sklearn MLP & NLI-DeBERTa \\
+Epochs & 3 & 10+5 & --- & 6+3 \\
 Learning rate & 2e-5 & 2e-5 / 5e-6 & --- & 2e-5 / 5e-6 \\
-Batch size & 32 & 16 & --- & 2 (acc.\ 8) \\
+Batch size & 16 (acc.\ 2) & 16 & --- & 2 (acc.\ 4) \\
 Max length & 256 & 512 & --- & 192 \\
-Precision & fp32 & fp16 & --- & fp16 \\
+Precision & fp16 & fp16 & --- & fp16 \\
+Grad.\ clip & 1.0 & 1.0 & --- & 1.0 \\
 \bottomrule
 \end{tabular}
 \caption{Training configurations for each system component.
 The NLI classifier and E2E verifier use a two-stage schedule
 (gold evidence then retrieved evidence), reflected in the
-split epoch and learning rate values.}
+split epoch and learning rate values. The E2E verifier uses
+gradient checkpointing and reduced sequence length to fit
+5$\times$ per-evidence encoding within T4 memory.}
 \label{tab:hyperparams}
 \end{table}
 
@@ -480,11 +585,12 @@ Hybrid bi-encoder (baseline) & 0.144 & 54.6\% & 0.228 \\
 + End-to-end verifier & 0.238 & \textbf{59.1\%} & \textbf{0.334} \\
 \bottomrule
 \end{tabular}
-\caption{End-to-end results on the development set. Each row adds one
-technique to the previous system. The reranker helps retrieval; NLI
-transfer helps classification; the end-to-end verifier achieves the
-best Harmonic Mean by combining strong retrieval with per-evidence
-encoding. Results vary $\pm$2\% across runs.}
+\caption{End-to-end results on the development set. Systems are
+presented in development order: Systems 2--3 share coarse hybrid
+retrieval (no reranker), while Systems 4--5 add cross-encoder
+reranking. The end-to-end verifier achieves the best Harmonic Mean
+by combining strong retrieval with per-evidence encoding.
+Results vary $\pm$2\% across runs.}
 \label{tab:main-results}
 \end{table}
 
@@ -666,9 +772,10 @@ both sides of a claim.
 % ================================================================
 
 Our system has several constraints.
-First, DeBERTa-v3 needs fp32 for the reranker because of numerical
-problems in half-precision, which limits batch sizes on the T4 GPU
-(15GB VRAM) and causes about $\pm$2\% variance between runs.
+First, the T4 GPU (15GB VRAM) limits batch sizes --- particularly for
+System 5, which encodes 5 (claim, evidence) pairs per example ---
+and non-determinism in mixed-precision training causes about $\pm$2\%
+variance between runs.
 Second, the training set has only 124 \textsc{Disputed} examples
 (10.1\%), making it hard to learn good decision boundaries for this
 class.
