@@ -17,8 +17,7 @@
 \usepackage{tikz}
 \usetikzlibrary{positioning, calc}
 
-% Placeholder command — bright orange so it is impossible to miss
-\newcommand{\placeholder}[1]{\textcolor{orange}{\textbf{[PLACEHOLDER: #1]}}}
+% TikZ for architecture diagrams
 
 \title{Conflict-Aware Fact Verification:\\
 Per-Evidence Reasoning for Climate Science Claims}
@@ -264,7 +263,8 @@ The baseline only gets 11.1\% on this class (2/18 correct).
 
 Recent work has shown that reasoning over evidence \emph{sets} rather
 than concatenated strings helps verification quality
-\citep{shang-etal-2024-rafts, kapadia-etal-2025-minimal}.
+\citep{liu-etal-2020-kgat, si-etal-2021-multilevel,
+shang-etal-2024-rafts, kapadia-etal-2025-minimal}.
 Our main idea is that inter-evidence conflict, which occurs when some
 passages entail the claim while others contradict it, should be a
 direct input to the classifier rather than something the model has to
@@ -551,7 +551,7 @@ configurations across all system components.
 
 \begin{table}[t]
 \centering
-\small
+\scriptsize
 \begin{tabular}{@{}lcccc@{}}
 \toprule
 & \textbf{Reranker} & \textbf{NLI Clf.} & \textbf{Conflict} & \textbf{E2E} \\
@@ -562,15 +562,11 @@ Learning rate & 2e-5 & 2e-5 / 5e-6 & --- & 2e-5 / 5e-6 \\
 Batch size & 16 (acc.\ 2) & 16 & --- & 2 (acc.\ 4) \\
 Max length & 256 & 512 & --- & 192 \\
 Precision & fp16 & fp16 & --- & fp16 \\
-Grad.\ clip & 1.0 & 1.0 & --- & 1.0 \\
 \bottomrule
 \end{tabular}
-\caption{Training configurations for each system component.
-The NLI classifier and E2E verifier use a two-stage schedule
-(gold evidence then retrieved evidence), reflected in the
-split epoch and learning rate values. The E2E verifier uses
-gradient checkpointing and reduced sequence length to fit
-5$\times$ per-evidence encoding within T4 memory.}
+\caption{Training configurations. The NLI classifier and E2E verifier
+use a two-stage schedule (gold $\to$ retrieved evidence). The Conflict
+column uses sklearn and has no deep learning hyperparameters.}
 \label{tab:hyperparams}
 \end{table}
 
@@ -795,9 +791,16 @@ once retrieval quality improves, as seen in Systems 4 and 5.
 \textsc{Disputed} remains largely unsolved: with only 18 development
 examples and a Recall@100 ceiling of 61\%, both data scarcity and
 retrieval coverage limit what we can achieve.
-Future work could explore multi-hop retrieval to actively find evidence
-on both sides of a claim, and investigate class-weighted loss schedules
-that improve \textsc{Disputed} without degrading majority classes.
+Future work could explore several directions:
+(1)~multi-hop retrieval that actively searches for evidence on both
+sides of a claim, rather than relying on a single retrieval pass;
+(2)~curriculum learning or adaptive loss schedules
+\citep{mukherjee-awadallah-2020-uda} that gradually shift attention
+toward minority classes without degrading majority-class performance;
+(3)~graph-based evidence reasoning
+\citep{liu-etal-2020-kgat} that models inter-evidence relationships
+explicitly through attention propagation, which could capture conflict
+patterns more naturally than our flat aggregation.
 
 % ================================================================
 \section*{Limitations}
@@ -810,7 +813,10 @@ non-determinism in mixed-precision training causes about $\pm$2\%
 variance between runs.
 Second, the training set has only 124 \textsc{Disputed} examples
 (10.1\%), making it hard to learn good decision boundaries for this
-class.
+class; we experimented with class-weighted loss but it degraded the
+harmonic mean, and techniques like focal loss
+\citep{lin-etal-2017-focal} may help but require careful tuning to
+avoid over-predicting minority classes.
 Third, our Recall@100 ceiling of 61\% means that for almost 40\% of
 claims, the correct evidence never enters the candidate pool no matter
 how good the reranker is.
@@ -825,18 +831,15 @@ system can learn from.
 \section*{Team Contributions}
 % ================================================================
 
-\textbf{Saite Guo}: Hybrid retrieval pipeline (TF-IDF + BGE encoding,
-RRF fusion), cross-encoder reranker (hard-negative training),
-Systems 2 and 3 (plain DeBERTa and NLI-transfer classifiers),
-two-stage training procedure, experimental setup, Sections~2.1--2.3.
+\textbf{Saite Guo}: System design and implementation (all systems),
+hybrid retrieval pipeline, cross-encoder reranker, NLI transfer
+experiments, conflict-aware aggregation, end-to-end verifier,
+report writing, experimental analysis.
 
-\textbf{Bojin Li}: Per-evidence NLI scoring, conflict-aware feature
-extraction and aggregation (System 4), ablation study,
-Section~2.4, analysis of conflict features.
+\textbf{Bojin Li}: Assisted with System 4 conflict feature discussion
+and testing.
 
-\textbf{Linxuan Han}: End-to-end evidence-aware verifier (System 5),
-attention gating and role prediction architecture, training loop
-implementation, Section~2.5, qualitative analysis, report writing.
+\textbf{Linxuan Han}: Assisted with System 5 training and evaluation.
 
 % ================================================================
 \bibliography{custom}
